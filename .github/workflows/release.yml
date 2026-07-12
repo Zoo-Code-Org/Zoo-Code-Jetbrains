@@ -15,9 +15,10 @@ jobs:
 
     steps:
       - name: Check out repository history
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          lfs: true
 
       - name: Check whether the tag is on main
         id: tag-check
@@ -35,9 +36,37 @@ jobs:
             echo "Tag $TAG_NAME does not point to a commit on main; skipping release."
           fi
 
+      - name: Set up Java 17
+        if: steps.tag-check.outputs.on_mainline == 'true'
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Set up Node.js
+        if: steps.tag-check.outputs.on_mainline == 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: extension_host/package-lock.json
+
+      - name: Build release extension
+        if: steps.tag-check.outputs.on_mainline == 'true'
+        run: ./scripts/build.sh --mode release --clean
+
       - name: Create GitHub release
         if: steps.tag-check.outputs.on_mainline == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           TAG_NAME: ${{ github.ref_name }}
-        run: gh release create "$TAG_NAME" --verify-tag --generate-notes --title "$TAG_NAME"
+        run: |
+          if ! gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            gh release create "$TAG_NAME" \
+              --verify-tag \
+              --generate-notes \
+              --title "$TAG_NAME"
+          fi
+
+          gh release upload "$TAG_NAME" dist/ZooCode-*.zip --clobber
