@@ -34,13 +34,12 @@ class ZooCodeButtonProvider : ExtensionButtonProvider {
     
     override fun getButtons(project: Project): List<AnAction> {
         // Note: project parameter kept for future extensibility
-        // Order matches VS Code: New Task, Marketplace, Settings, Cloud (visible)
+        // Order matches VS Code: New Task, Marketplace, Settings (visible)
         // History, Prompts, MCP, Open in Editor (overflow menu)
         return listOf(
             PlusButtonClickAction(),
             MarketplaceButtonClickAction(),
             SettingsButtonClickAction(),
-            CloudButtonClickAction(),
             HistoryButtonClickAction(),
             PromptsButtonClickAction(),
             MCPButtonClickAction(),
@@ -49,12 +48,11 @@ class ZooCodeButtonProvider : ExtensionButtonProvider {
     }
     
     override fun getVisibleButtons(project: Project): List<AnAction> {
-        // First 4 buttons are directly visible in the toolbar
+        // These buttons are directly visible in the toolbar
         return listOf(
             PlusButtonClickAction(),
             MarketplaceButtonClickAction(),
-            SettingsButtonClickAction(),
-            CloudButtonClickAction()
+            SettingsButtonClickAction()
         )
     }
     
@@ -74,7 +72,7 @@ class ZooCodeButtonProvider : ExtensionButtonProvider {
     
     /**
      * Zoo Code button configuration - shows buttons matching VS Code layout.
-     * Directly visible: New Task, Marketplace, Settings, Cloud
+     * Directly visible: New Task, Marketplace, Settings
      * In overflow menu: History, Prompts, MCP Servers, Open in Editor
      */
     private class ZooCodeButtonConfiguration : ButtonConfiguration {
@@ -89,7 +87,6 @@ class ZooCodeButtonProvider : ExtensionButtonProvider {
                 ButtonType.PLUS,          // New Task
                 ButtonType.MARKETPLACE,   // Marketplace
                 ButtonType.SETTINGS,      // Settings
-                ButtonType.CLOUD,         // Cloud
                 ButtonType.HISTORY,       // History (overflow)
                 ButtonType.PROMPTS,       // Prompts (overflow)
                 ButtonType.MCP,          // MCP Servers (overflow)

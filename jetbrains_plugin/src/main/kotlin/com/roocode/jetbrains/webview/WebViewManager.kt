@@ -32,12 +32,15 @@ import org.cef.browser.CefFrame
 import org.cef.handler.*
 import org.cef.misc.BoolRef
 import org.cef.network.CefRequest
+import java.awt.KeyboardFocusManager
+import java.awt.event.KeyEvent
 import java.io.IOException
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.util.*
+import javax.swing.SwingUtilities
 import kotlin.io.path.createDirectories
 import kotlin.io.path.exists
 import kotlin.io.path.pathString
@@ -464,6 +467,12 @@ class WebViewInstance(
     
     // JCEF browser instance
     val browser = JBCefBrowser.createBuilder().setOffScreenRendering(true).build()
+
+    private var zoomLevel = DEFAULT_ZOOM_LEVEL
+
+    private val zoomKeyEventDispatcher = java.awt.KeyEventDispatcher { event ->
+        handleZoomKeyEvent(event)
+    }
     
     // WebView state
     private var isDisposed = false
@@ -486,8 +495,39 @@ class WebViewInstance(
     
     init {
         setupJSBridge()
+        setupZoomShortcuts()
         // Enable resource loading interception
         enableResourceInterception(extension)
+    }
+
+    private fun setupZoomShortcuts() {
+        KeyboardFocusManager.getCurrentKeyboardFocusManager()
+            .addKeyEventDispatcher(zoomKeyEventDispatcher)
+    }
+
+    private fun handleZoomKeyEvent(event: KeyEvent): Boolean {
+        if (isDisposed || event.id != KeyEvent.KEY_PRESSED || (!event.isMetaDown && !event.isControlDown)) {
+            return false
+        }
+
+        val focusOwner = KeyboardFocusManager.getCurrentKeyboardFocusManager().focusOwner
+        if (focusOwner == null ||
+            (focusOwner !== browser.component && !SwingUtilities.isDescendingFrom(focusOwner, browser.component))
+        ) {
+            return false
+        }
+
+        val newZoomLevel = when (event.keyCode) {
+            KeyEvent.VK_EQUALS, KeyEvent.VK_ADD -> (zoomLevel + ZOOM_STEP).coerceAtMost(MAX_ZOOM_LEVEL)
+            KeyEvent.VK_MINUS, KeyEvent.VK_SUBTRACT -> (zoomLevel - ZOOM_STEP).coerceAtLeast(MIN_ZOOM_LEVEL)
+            KeyEvent.VK_0, KeyEvent.VK_NUMPAD0 -> DEFAULT_ZOOM_LEVEL
+            else -> return false
+        }
+
+        zoomLevel = newZoomLevel
+        browser.cefBrowser.zoomLevel = zoomLevel
+        event.consume()
+        return true
     }
 
     /**
@@ -929,9 +969,18 @@ class WebViewInstance(
     
     override fun dispose() {
         if (!isDisposed) {
+            KeyboardFocusManager.getCurrentKeyboardFocusManager()
+                .removeKeyEventDispatcher(zoomKeyEventDispatcher)
             browser.dispose()
             isDisposed = true
             logger.info("WebView instance released: $viewType/$viewId")
         }
+    }
+
+    private companion object {
+        const val DEFAULT_ZOOM_LEVEL = 0.0
+        const val ZOOM_STEP = 1.0
+        const val MIN_ZOOM_LEVEL = -5.0
+        const val MAX_ZOOM_LEVEL = 5.0
     }
 }

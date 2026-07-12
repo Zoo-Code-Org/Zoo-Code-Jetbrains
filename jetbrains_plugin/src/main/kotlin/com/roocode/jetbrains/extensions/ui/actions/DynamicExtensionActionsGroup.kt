@@ -105,12 +105,12 @@ class DynamicExtensionActionsGroup : DefaultActionGroup(), DumbAware, ActionUpda
     }
     
     /**
-     * Creates an overflow menu (three dots) containing additional actions
+     * Creates an overflow menu containing additional actions.
      */
     private fun createOverflowMenu(): AnAction {
         return object : DefaultActionGroup("More Actions", true), DumbAware {
             init {
-                templatePresentation.icon = AllIcons.Actions.More
+                templatePresentation.icon = AllIcons.Actions.ListFiles
                 templatePresentation.text = ""  // No text, just icon
                 templatePresentation.description = "More actions"
                 
