@@ -87,10 +87,10 @@ SPDX-License-Identifier: Apache-2.0
     <!-- Extension points defined by the plugin.
          Read more: https://plugins.jetbrains.com/docs/intellij/plugin-extension-points.html -->
     <extensions defaultExtensionNs="com.intellij">
-        <projectService serviceImplementation="com.roocode.jetbrains.plugin.WecoderPluginService"/>
-        <postStartupActivity implementation="com.roocode.jetbrains.plugin.WecoderPlugin"/>
-        <editorFactoryListener implementation="com.roocode.jetbrains.editor.EditorListener"/>
-        <toolWindow factoryClass="com.roocode.jetbrains.ui.ZooCodeJetBrainsToolWindowFactory"
+        <projectService serviceImplementation="org.zoocode.jetbrains.plugin.WecoderPluginService"/>
+        <postStartupActivity implementation="org.zoocode.jetbrains.plugin.WecoderPlugin"/>
+        <editorFactoryListener implementation="org.zoocode.jetbrains.editor.EditorListener"/>
+        <toolWindow factoryClass="org.zoocode.jetbrains.ui.ZooCodeJetBrainsToolWindowFactory"
                     id="Zoo Code JetBrains"
                     secondary="true"
                     icon="/icons/zoo-logo.svg"
@@ -100,20 +100,20 @@ SPDX-License-Identifier: Apache-2.0
     </extensions>
 
     <extensions defaultExtensionNs="org.jetbrains.plugins.terminal">
-        <localTerminalCustomizer implementation="com.roocode.jetbrains.terminal.WeCoderTerminalCustomizer"/>
+        <localTerminalCustomizer implementation="org.zoocode.jetbrains.terminal.WeCoderTerminalCustomizer"/>
     </extensions>
 
     <actions>
         <!-- Dynamic toolbar group - buttons will be populated based on current extension -->
         <group id="WecoderToolbarGroup">
             <group id="ZooCodeJetBrains.DynamicExtensionActions"
-                   class="com.roocode.jetbrains.extensions.ui.actions.DynamicExtensionActionsGroup"
+                   class="org.zoocode.jetbrains.extensions.ui.actions.DynamicExtensionActionsGroup"
                    text="Extension Actions"
                    description="Dynamic extension-specific actions" />
         </group>
 
         <group id="ZooCodeJetBrains.RightClickMenu" text="Zoo Code" description="Zoo Code AI Assistant"  icon="/icons/zoo-logo.svg" popup="true">
-            <group id="ZooCodeJetBrains.RightClick.Chat" class="com.roocode.jetbrains.extensions.ui.contextmenu.DynamicExtensionContextMenuGroup"
+            <group id="ZooCodeJetBrains.RightClick.Chat" class="org.zoocode.jetbrains.extensions.ui.contextmenu.DynamicExtensionContextMenuGroup"
                    text="Extension Actions" description="Dynamic extension-specific context menu actions"/>
             <add-to-group group-id="EditorPopupMenu" anchor="first"/>
         </group>
@@ -122,7 +122,7 @@ SPDX-License-Identifier: Apache-2.0
         <!-- Right-click menu for extension-specific actions -->
         <group id="ZooCodeJetBrains.RightClick.ExtensionActions" text="Extension Actions" description="Extension-specific actions">
             <group id="ZooCodeJetBrains.RightClick.DynamicExtensionActions"
-                   class="com.roocode.jetbrains.extensions.ui.actions.DynamicExtensionActionsGroup"
+                   class="org.zoocode.jetbrains.extensions.ui.actions.DynamicExtensionActionsGroup"
                    text="Extension Actions"
                    description="Dynamic extension-specific actions" />
             <add-to-group group-id="EditorPopupMenu" anchor="last"/>
@@ -132,7 +132,7 @@ SPDX-License-Identifier: Apache-2.0
         <group id="ZooCodeJetBrains.MainMenu" text="Zoo Code" description="Zoo Code AI Assistant">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
             <group id="ZooCodeJetBrains.MainMenu.DynamicExtensionActions"
-                   class="com.roocode.jetbrains.extensions.ui.actions.DynamicExtensionActionsGroup"
+                   class="org.zoocode.jetbrains.extensions.ui.actions.DynamicExtensionActionsGroup"
                    text="Extension Actions"
                    description="Dynamic extension-specific actions" />
         </group>

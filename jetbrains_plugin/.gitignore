@@ -44,7 +44,7 @@ bin/
 
 ### Mac OS ###
 .DS_Store
-src/main/resources/com/roocode/jetbrains/plugin/config/plugin.properties
+src/main/resources/org/zoocode/jetbrains/plugin/config/plugin.properties
 zoo-code-messages.log
 /src/main/resources/zoo-code/*
 prodDep.txt
