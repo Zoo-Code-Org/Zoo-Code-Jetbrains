@@ -38,15 +38,15 @@ bin/
 /dist/
 /nbdist/
 /.nb-gradle/
-/roo-code/
+/zoo-code/
 ### VS Code ###
 .vscode/
 
 ### Mac OS ###
 .DS_Store
 src/main/resources/com/roocode/jetbrains/plugin/config/plugin.properties
-roo-code-messages.log
-/src/main/resources/roo-code/*
+zoo-code-messages.log
+/src/main/resources/zoo-code/*
 prodDep.txt
 
 ### Backup files ###

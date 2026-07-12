@@ -12,7 +12,7 @@ import com.roocode.jetbrains.util.PluginResourceUtil
 import java.io.File
 
 /**
- * Extension manager factory for Roo Code
+ * Extension manager factory for Zoo Code
  * Creates and manages extension managers for different extension types
  */
 @Service(Service.Level.PROJECT)

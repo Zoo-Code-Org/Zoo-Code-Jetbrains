@@ -24,7 +24,7 @@ const __dirname = path.dirname(__filename);
 
 // Create ExtensionManager instance and register extension
 const extensionManager = new ExtensionManager();
-const rooCodeIdentifier = extensionManager.registerExtension('roo-code').identifier;
+const zooCodeIdentifier = extensionManager.registerExtension('zoo-code').identifier;
 
 // Declare extension host process variables
 let extHostProcess: ReturnType<typeof fork>;
@@ -134,12 +134,12 @@ const server = net.createServer((socket) => {
 
             rpcManager.startInitialize();
             
-            // Activate rooCode plugin
+            // Activate zooCode plugin
             const rpcProtocol = rpcManager.getRPCProtocol();
             if (rpcProtocol) {
-                extensionManager.activateExtension(rooCodeIdentifier.value, rpcProtocol)
+                extensionManager.activateExtension(zooCodeIdentifier.value, rpcProtocol)
                     .catch((error: Error) => {
-                        console.error('Failed to load rooCode plugin:', error);
+                        console.error('Failed to load zooCode plugin:', error);
                     });
             } else {
                 console.error('Failed to get RPCProtocol from RPCManager');

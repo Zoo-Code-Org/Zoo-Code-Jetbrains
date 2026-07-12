@@ -11,7 +11,7 @@ import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 import com.roocode.jetbrains.extensions.core.ExtensionManager
-import com.roocode.jetbrains.extensions.plugin.roo.RooCodeButtonProvider
+import com.roocode.jetbrains.extensions.plugin.zoo.ZooCodeButtonProvider
 
 /**
  * Dynamic button manager that controls which buttons are visible based on the current extension type.
@@ -89,7 +89,7 @@ class DynamicButtonManager(private val project: Project) {
         if (extensionId == null) return null
         
         return when (extensionId) {
-            "roo-code" -> RooCodeButtonProvider()
+            "zoo-code" -> ZooCodeButtonProvider()
             // TODO: Add other button providers as they are implemented
             // "copilot" -> CopilotButtonProvider()
             // "claude" -> ClaudeButtonProvider()
@@ -118,7 +118,7 @@ class DynamicButtonManager(private val project: Project) {
                     val actionManager = ActionManager.getInstance()
                     
                     // Get the dynamic actions group
-                    val dynamicGroup = actionManager.getAction("RunVSAgent.DynamicExtensionActions")
+                    val dynamicGroup = actionManager.getAction("ZooCodeJetBrains.DynamicExtensionActions")
                     dynamicGroup?.let { group ->
                         // Trigger UI refresh by notifying the platform
                         // The platform will automatically call the appropriate update methods

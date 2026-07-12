@@ -69,7 +69,7 @@ class WecoderPlugin : StartupActivity.DumbAware {
         val osArch = System.getProperty("os.arch")
         
         LOG.info(
-            "Initializing RunVSAgent plugin for project: ${project.name}, " +
+            "Initializing Zoo Code JetBrains plugin for project: ${project.name}, " +
             "OS: $osName $osVersion ($osArch), " +
             "IDE: ${appInfo.fullApplicationName} (build ${appInfo.build}), " +
             "Plugin version: $pluginVersion, " +
@@ -91,13 +91,13 @@ class WecoderPlugin : StartupActivity.DumbAware {
             
             // 3. Validate configuration validity
             if (!canProceedWithInitialization(configManager)) {
-                // Always auto-create default configuration with Roo Code
-                LOG.info("No valid configuration found, auto-creating default Roo Code configuration...")
+                // Always auto-create default configuration with Zoo Code
+                LOG.info("No valid configuration found, auto-creating default Zoo Code configuration...")
                 configManager.createDefaultConfiguration()
                 
                 // Validate configuration again
                 if (canProceedWithInitialization(configManager)) {
-                    LOG.info("Default Roo Code configuration created successfully, continuing initialization")
+                    LOG.info("Default Zoo Code configuration created successfully, continuing initialization")
                 } else {
                     LOG.error("Failed to create valid configuration even after auto-creation")
                     LOG.error("Please check file permissions for: ${configManager.getConfigurationFilePath()}")
@@ -127,19 +127,19 @@ class WecoderPlugin : StartupActivity.DumbAware {
                 
                 // Register project-level resource cleanup
                 Disposer.register(project, Disposable {
-                    LOG.info("Disposing RunVSAgent plugin for project: ${project.name}")
+                    LOG.info("Disposing Zoo Code JetBrains plugin for project: ${project.name}")
                     pluginService.dispose()
                     extensionManager.dispose()
                     SystemObjectProvider.dispose()
                 })
                 
-                LOG.info("RunVSAgent plugin initialized successfully for project: ${project.name}")
+                LOG.info("Zoo Code JetBrains plugin initialized successfully for project: ${project.name}")
             } else {
                 LOG.error("Configuration is valid but no extension ID found, plugin initialization paused")
                 return
             }
         } catch (e: Exception) {
-            LOG.error("Failed to initialize RunVSAgent plugin", e)
+            LOG.error("Failed to initialize Zoo Code JetBrains plugin", e)
         }
     }
     
@@ -202,7 +202,7 @@ class WecoderPlugin : StartupActivity.DumbAware {
             }
         }.apply {
             isDaemon = true
-            name = "RunVSAgent-ConfigMonitor"
+            name = "Zoo Code JetBrains-ConfigMonitor"
             start()
         }
     }

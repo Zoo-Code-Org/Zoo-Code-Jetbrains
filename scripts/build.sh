@@ -1,8 +1,8 @@
 
 #!/bin/bash
 
-# Build script with pre-packaged Roo Code extension
-# This script downloads, integrates, and builds the project with Roo Code pre-installed
+# Build script with pre-packaged Zoo Code extension
+# This script downloads, integrates, and builds the project with Zoo Code pre-installed
 
 set -euo pipefail
 
@@ -13,18 +13,17 @@ source "$SCRIPT_DIR/lib/build.sh"
 # Script configuration
 readonly SCRIPT_NAME="build.sh"
 readonly SCRIPT_VERSION="1.0.0"
-readonly ROO_EXTENSION_PUBLISHER="RooVeterinaryInc"
-readonly ROO_EXTENSION_NAME="roo-cline"
+readonly ZOO_EXTENSION_PUBLISHER="ZooCodeOrganization"
+readonly ZOO_EXTENSION_NAME="zoo-code"
 # Will be set dynamically to latest version
-ROO_EXTENSION_VERSION=""
-ROO_EXTENSION_URL=""
+ZOO_EXTENSION_VERSION=""
+ZOO_EXTENSION_URL=""
 
 # Build configuration
 BUILD_MODE="${BUILD_MODE:-release}"
 DOWNLOAD_DIR=""
 EXTENSION_OUTPUT_DIR=""
 SKIP_DOWNLOAD=false
-SKIP_VSCODE_BUILD=false
 SKIP_EXTENSION_HOST_BUILD=false
 SKIP_IDEA_BUILD=false
 CLEAN_BUILD=false
@@ -32,25 +31,24 @@ CLEAN_BUILD=false
 # Show help for this script
 show_help() {
     cat << EOF
-$SCRIPT_NAME - Build RunVSAgent with pre-packaged Roo Code extension
+$SCRIPT_NAME - Build Zoo Code JetBrains with pre-packaged Zoo Code extension
 
 USAGE:
     $SCRIPT_NAME [OPTIONS]
 
 DESCRIPTION:
-    This script automates the entire build process with Roo Code extension
+    This script automates the entire build process with Zoo Code extension
     pre-packaged and ready to use. It:
-    - Downloads the Roo Code extension from VSCode marketplace
+    - Downloads the Zoo Code extension from VSCode marketplace
     - Extracts and integrates it into the project
     - Builds all components (VSCode, Extension Host, IDEA plugin)
-    - Outputs a complete package with Roo Code pre-installed
+    - Outputs a complete package with Zoo Code pre-installed
 
 OPTIONS:
     -m, --mode MODE         Build mode: release (default) or debug
     -o, --output DIR        Output directory for final build
     -c, --clean             Clean build (remove all artifacts before building)
-    --skip-download         Skip downloading Roo Code (use existing)
-    --skip-vscode           Skip VSCode extension build
+    --skip-download         Skip downloading Zoo Code (use existing)
     --skip-host             Skip Extension Host build
     --skip-idea             Skip IDEA plugin build
     -v, --verbose           Enable verbose output
@@ -58,14 +56,14 @@ OPTIONS:
     -h, --help              Show this help message
 
 EXAMPLES:
-    $SCRIPT_NAME                        # Full build with Roo Code
+    $SCRIPT_NAME                        # Full build with Zoo Code
     $SCRIPT_NAME --mode debug           # Debug build
     $SCRIPT_NAME --output ./dist        # Custom output directory
     $SCRIPT_NAME --clean                # Clean build from scratch
 
 OUTPUT:
     The script creates a complete build in the output directory with:
-    - IDEA plugin (.zip) with Roo Code pre-integrated
+    - IDEA plugin (.zip) with Zoo Code pre-integrated
     - Extension Host runtime
     - Debug resources (if debug mode)
     - Ready-to-use configuration
@@ -74,7 +72,7 @@ REQUIREMENTS:
     - Node.js 16+ and npm
     - JDK 17+ (for IDEA plugin)
     - Git with submodules initialized
-    - Internet connection (for downloading Roo Code)
+    - Internet connection (for downloading Zoo Code)
     - curl or wget for downloading
 
 EOF
@@ -106,10 +104,6 @@ parse_args() {
                 ;;
             --skip-download)
                 SKIP_DOWNLOAD=true
-                shift
-                ;;
-            --skip-vscode)
-                SKIP_VSCODE_BUILD=true
                 shift
                 ;;
             --skip-host)
@@ -154,11 +148,11 @@ parse_args() {
 }
 
 # Initialize build environment
-init_roo_build_env() {
-    log_step "Initializing Roo Code build environment..."
+init_zoo_build_env() {
+    log_step "Initializing Zoo Code build environment..."
     
     # Set up directories
-    DOWNLOAD_DIR="$PROJECT_ROOT/.roo-build"
+    DOWNLOAD_DIR="$PROJECT_ROOT/.zoo-build"
     if [[ -z "$EXTENSION_OUTPUT_DIR" ]]; then
         EXTENSION_OUTPUT_DIR="$PROJECT_ROOT/dist"
     fi
@@ -178,19 +172,18 @@ init_roo_build_env() {
     log_info "Output directory: $EXTENSION_OUTPUT_DIR"
 }
 
-# Get latest Roo Code extension version
-get_latest_roo_version() {
-    log_step "Fetching latest Roo Code extension version..."
+# Get latest Zoo Code extension version
+get_latest_zoo_version() {
+    log_step "Fetching latest Zoo Code extension version..."
     
     local api_url="https://marketplace.visualstudio.com/_apis/public/gallery/extensionquery"
     local query_json='{
         "filters": [{
             "criteria": [
-                {"filterType": 7, "value": "RooVeterinaryInc.roo-cline"},
-                {"filterType": 12, "value": "4096"}
+                {"filterType": 7, "value": "ZooCodeOrganization.zoo-code"}
             ]
         }],
-        "flags": 914
+        "flags": 439
     }'
     
     # Fetch extension data from marketplace
@@ -218,40 +211,53 @@ get_latest_roo_version() {
         exit 4
     fi
     
-    # Parse the version from response using grep and sed
-    ROO_EXTENSION_VERSION=$(echo "$response" | grep -o '"version":"[^"]*"' | head -1 | sed 's/"version":"\([^"]*\)"/\1/')
-    
-    if [[ -z "$ROO_EXTENSION_VERSION" ]]; then
+    # Select the newest stable Marketplace release (never a pre-release build).
+    ZOO_EXTENSION_VERSION=$(printf '%s' "$response" | node -e '
+        let input = "";
+        process.stdin.on("data", chunk => input += chunk);
+        process.stdin.on("end", () => {
+            const data = JSON.parse(input);
+            const versions = data.results?.[0]?.extensions?.[0]?.versions ?? [];
+            const stable = versions.find(version =>
+                !version.properties?.some(property =>
+                    property.key === "Microsoft.VisualStudio.Code.PreRelease" && property.value === "true"
+                )
+            );
+            if (stable) process.stdout.write(stable.version);
+        });
+    ')
+
+    if [[ -z "$ZOO_EXTENSION_VERSION" ]]; then
         # Fallback to a known working version
-        log_warn "Could not fetch latest version, using fallback version 3.26.0"
-        ROO_EXTENSION_VERSION="3.26.0"
+        log_warn "Could not fetch latest stable version, using fallback version 3.68.0"
+        ZOO_EXTENSION_VERSION="3.68.0"
     fi
     
     # Set the download URL with the version
-    ROO_EXTENSION_URL="https://marketplace.visualstudio.com/_apis/public/gallery/publishers/${ROO_EXTENSION_PUBLISHER}/vsextensions/${ROO_EXTENSION_NAME}/${ROO_EXTENSION_VERSION}/vspackage"
+    ZOO_EXTENSION_URL="https://marketplace.visualstudio.com/_apis/public/gallery/publishers/${ZOO_EXTENSION_PUBLISHER}/vsextensions/${ZOO_EXTENSION_NAME}/${ZOO_EXTENSION_VERSION}/vspackage"
     
-    log_success "Found Roo Code extension version: $ROO_EXTENSION_VERSION"
+    log_success "Found Zoo Code extension version: $ZOO_EXTENSION_VERSION"
     
-    # Update gradle.properties with the Roo Code version
+    # Update gradle.properties with the Zoo Code version
     update_gradle_version
 }
 
-# Update gradle.properties with the Roo Code version
+# Update gradle.properties with the Zoo Code version
 update_gradle_version() {
     local gradle_props="$PROJECT_ROOT/jetbrains_plugin/gradle.properties"
     
     if [[ -f "$gradle_props" ]]; then
-        log_info "Updating gradle.properties with version $ROO_EXTENSION_VERSION..."
+        log_info "Updating gradle.properties with version $ZOO_EXTENSION_VERSION..."
         
         # Update the version in gradle.properties
         if [[ "$DRY_RUN" != "true" ]]; then
             # Update the pluginVersion line
-            sed -i.tmp "s/^pluginVersion=.*/pluginVersion=${ROO_EXTENSION_VERSION}/" "$gradle_props"
+            sed -i.tmp "s/^pluginVersion=.*/pluginVersion=${ZOO_EXTENSION_VERSION}/" "$gradle_props"
             rm "${gradle_props}.tmp" 2>/dev/null || true
             
-            log_success "Updated plugin version to $ROO_EXTENSION_VERSION in gradle.properties"
+            log_success "Updated plugin version to $ZOO_EXTENSION_VERSION in gradle.properties"
         else
-            log_info "[DRY RUN] Would update gradle.properties version to $ROO_EXTENSION_VERSION"
+            log_info "[DRY RUN] Would update gradle.properties version to $ZOO_EXTENSION_VERSION"
         fi
     else
         log_warn "gradle.properties not found at: $gradle_props"
@@ -294,16 +300,6 @@ check_requirements() {
         exit 4
     fi
     
-    # Check git submodules
-    if [[ ! -d "$PROJECT_ROOT/deps/vscode" ]] || [[ ! "$(ls -A "$PROJECT_ROOT/deps/vscode" 2>/dev/null)" ]]; then
-        log_error "VSCode submodule not initialized. Run './scripts/setup.sh' first."
-        exit 4
-    fi
-    
-    if [[ ! -d "$PROJECT_ROOT/deps/roo-code" ]] || [[ ! "$(ls -A "$PROJECT_ROOT/deps/roo-code" 2>/dev/null)" ]]; then
-        log_warn "Roo-Code submodule not initialized. Will use marketplace version."
-    fi
-    
     log_success "All requirements met"
 }
 
@@ -333,37 +329,37 @@ clean_build_artifacts() {
     log_success "Build artifacts cleaned"
 }
 
-# Download Roo Code extension
-download_roo_extension() {
+# Download Zoo Code extension
+download_zoo_extension() {
     if [[ "$SKIP_DOWNLOAD" == "true" ]]; then
-        log_info "Skipping Roo Code download"
+        log_info "Skipping Zoo Code download"
         return 0
     fi
     
-    log_step "Downloading Roo Code extension..."
+    log_step "Downloading Zoo Code extension..."
     
-    local vsix_file="$DOWNLOAD_DIR/${ROO_EXTENSION_NAME}-${ROO_EXTENSION_VERSION}.vsix"
+    local vsix_file="$DOWNLOAD_DIR/${ZOO_EXTENSION_NAME}-${ZOO_EXTENSION_VERSION}.vsix"
     
     # Check if already downloaded
     if [[ -f "$vsix_file" ]]; then
-        log_info "Roo Code extension already downloaded"
+        log_info "Zoo Code extension already downloaded"
         return 0
     fi
     
     # Download using curl or wget
     if command_exists "curl"; then
-        log_info "Downloading from: $ROO_EXTENSION_URL"
+        log_info "Downloading from: $ZOO_EXTENSION_URL"
         if [[ "$DRY_RUN" == "true" ]]; then
-            log_info "[DRY RUN] Would download Roo Code extension v$ROO_EXTENSION_VERSION"
+            log_info "[DRY RUN] Would download Zoo Code extension v$ZOO_EXTENSION_VERSION"
         else
-            execute_cmd "curl -L -o '$vsix_file' '$ROO_EXTENSION_URL'" "download Roo Code extension"
+            execute_cmd "curl -L -o '$vsix_file' '$ZOO_EXTENSION_URL'" "download Zoo Code extension"
         fi
     elif command_exists "wget"; then
-        log_info "Downloading from: $ROO_EXTENSION_URL"
+        log_info "Downloading from: $ZOO_EXTENSION_URL"
         if [[ "$DRY_RUN" == "true" ]]; then
-            log_info "[DRY RUN] Would download Roo Code extension v$ROO_EXTENSION_VERSION"
+            log_info "[DRY RUN] Would download Zoo Code extension v$ZOO_EXTENSION_VERSION"
         else
-            execute_cmd "wget -O '$vsix_file' '$ROO_EXTENSION_URL'" "download Roo Code extension"
+            execute_cmd "wget -O '$vsix_file' '$ZOO_EXTENSION_URL'" "download Zoo Code extension"
         fi
     else
         log_error "No download tool available (curl or wget)"
@@ -373,23 +369,28 @@ download_roo_extension() {
     # Verify download (skip in dry-run mode)
     if [[ "$DRY_RUN" != "true" ]]; then
         if [[ ! -f "$vsix_file" ]]; then
-            log_error "Failed to download Roo Code extension"
+            log_error "Failed to download Zoo Code extension"
             exit 2
         fi
-        log_success "Roo Code extension downloaded: $vsix_file"
+        log_success "Zoo Code extension downloaded: $vsix_file"
     else
         log_info "[DRY RUN] Would verify download of: $vsix_file"
     fi
 }
 
-# Extract and prepare Roo Code extension
-prepare_roo_extension() {
-    log_step "Preparing Roo Code extension..."
+# Extract and prepare Zoo Code extension
+prepare_zoo_extension() {
+    log_step "Preparing Zoo Code extension..."
+
+    if [[ "$DRY_RUN" == "true" ]]; then
+        log_info "[DRY RUN] Would extract and prepare Zoo Code extension"
+        return 0
+    fi
     
-    local vsix_file="$DOWNLOAD_DIR/${ROO_EXTENSION_NAME}-${ROO_EXTENSION_VERSION}.vsix"
-    local extract_dir="$DOWNLOAD_DIR/roo-code-extracted"
-    # IMPORTANT: The prepareSandbox task expects files in plugins/roo-code/extension
-    local target_dir="$IDEA_BUILD_DIR/plugins/roo-code/extension"
+    local vsix_file="$DOWNLOAD_DIR/${ZOO_EXTENSION_NAME}-${ZOO_EXTENSION_VERSION}.vsix"
+    local extract_dir="$DOWNLOAD_DIR/zoo-code-extracted"
+    # IMPORTANT: The prepareSandbox task expects files in plugins/zoo-code/extension
+    local target_dir="$IDEA_BUILD_DIR/plugins/zoo-code/extension"
     
     # Clean extraction directory
     remove_dir "$extract_dir"
@@ -405,21 +406,21 @@ prepare_roo_extension() {
     fi
     
     # Extract VSIX
-    log_info "Extracting Roo Code extension..."
-    execute_cmd "unzip -q '$vsix_file' -d '$extract_dir'" "extract Roo Code extension"
+    log_info "Extracting Zoo Code extension..."
+    execute_cmd "unzip -q '$vsix_file' -d '$extract_dir'" "extract Zoo Code extension"
     
     # Prepare target directory (note: we clear the parent, then create extension subdir)
-    remove_dir "$IDEA_BUILD_DIR/plugins/roo-code"
+    remove_dir "$IDEA_BUILD_DIR/plugins/zoo-code"
     ensure_dir "$target_dir"
     
     # Copy extension files
     if [[ -d "$extract_dir/extension" ]]; then
-        log_info "Copying Roo Code extension files..."
+        log_info "Copying Zoo Code extension files..."
         cp -r "$extract_dir/extension"/* "$target_dir/" 2>/dev/null || {
             # Fallback if glob fails
             cp -r "$extract_dir/extension/." "$target_dir/"
         }
-        log_success "Roo Code extension files copied"
+        log_success "Zoo Code extension files copied"
     else
         log_error "Extension directory not found in VSIX"
         exit 2
@@ -449,66 +450,7 @@ prepare_roo_extension() {
         fi
     fi
     
-    log_success "Roo Code extension prepared at: $target_dir"
-}
-
-# Build VSCode extension (if using submodule)
-build_vscode_if_needed() {
-    if [[ "$SKIP_VSCODE_BUILD" == "true" ]]; then
-        log_info "Skipping VSCode extension build"
-        return 0
-    fi
-    
-    # Check if we should build from Roo-Code submodule
-    if [[ -d "$PROJECT_ROOT/deps/roo-code" ]] && [[ "$(ls -A "$PROJECT_ROOT/deps/roo-code" 2>/dev/null)" ]]; then
-        log_step "Building Roo Code from submodule..."
-        
-        cd "$PROJECT_ROOT/deps/roo-code"
-        
-        # Install dependencies
-        local pkg_manager="npm"
-        if command_exists "pnpm" && [[ -f "pnpm-lock.yaml" ]]; then
-            pkg_manager="pnpm"
-        fi
-        
-        log_info "Installing dependencies with $pkg_manager..."
-        execute_cmd "$pkg_manager install" "dependency installation"
-        
-        # Build extension
-        if [[ "$BUILD_MODE" == "debug" ]]; then
-            log_info "Building in debug mode..."
-            execute_cmd "$pkg_manager run build:dev" "Roo Code build (debug)" || \
-                execute_cmd "$pkg_manager run build" "Roo Code build (debug)"
-        else
-            log_info "Building in release mode..."
-            execute_cmd "$pkg_manager run build" "Roo Code build (release)"
-        fi
-        
-        # Package as VSIX if vsce is available
-        if command_exists "vsce" || npx vsce --help >/dev/null 2>&1; then
-            log_info "Creating VSIX package..."
-            # Change to src directory where the extension package.json is
-            cd "$PROJECT_ROOT/deps/roo-code/src"
-            # Try to package, but don't fail if it doesn't work
-            if npx vsce package --no-dependencies --out ../bin/roo-code-custom.vsix >/dev/null 2>&1; then
-                log_success "VSIX package created: roo-code-custom.vsix"
-                # Use this custom built VSIX instead of the downloaded one
-                local custom_vsix="$PROJECT_ROOT/deps/roo-code/bin/roo-code-custom.vsix"
-                if [[ -f "$custom_vsix" ]]; then
-                    log_info "Using custom-built VSIX for integration"
-                    # Copy to download directory for consistency
-                    cp "$custom_vsix" "$DOWNLOAD_DIR/roo-code-custom.vsix"
-                fi
-            else
-                log_warn "VSIX packaging failed, continuing with built files from source"
-            fi
-            cd "$PROJECT_ROOT/deps/roo-code"
-        fi
-        
-        log_success "Roo Code built from submodule"
-    else
-        log_info "Using downloaded Roo Code extension"
-    fi
+    log_success "Zoo Code extension prepared at: $target_dir"
 }
 
 # Build Extension Host
@@ -553,20 +495,20 @@ build_extension_host_component() {
     log_success "Extension Host built"
 }
 
-# Build IDEA plugin with Roo Code
-build_idea_with_roo() {
+# Build IDEA plugin with Zoo Code
+build_idea_with_zoo() {
     if [[ "$SKIP_IDEA_BUILD" == "true" ]]; then
         log_info "Skipping IDEA plugin build"
         return 0
     fi
     
-    log_step "Building IDEA plugin with Roo Code..."
+    log_step "Building IDEA plugin with Zoo Code..."
     
     cd "$IDEA_BUILD_DIR"
     
-    # Ensure Roo Code is in place
-    if [[ ! -d "$IDEA_BUILD_DIR/plugins/roo-code/extension" ]]; then
-        log_error "Roo Code extension not found in plugins/roo-code/extension directory"
+    # Ensure Zoo Code is in place
+    if [[ ! -d "$IDEA_BUILD_DIR/plugins/zoo-code/extension" ]]; then
+        log_error "Zoo Code extension not found in plugins/zoo-code/extension directory"
         exit 2
     fi
     
@@ -588,8 +530,8 @@ build_idea_with_roo() {
     execute_cmd "$gradle_cmd clean" "clean build directory"
     
     # Build plugin
-    log_info "Building IDEA plugin in $BUILD_MODE mode with version $ROO_EXTENSION_VERSION..."
-    execute_cmd "$gradle_cmd -PdebugMode=$debug_mode -PvscodePlugin=roo-code -PpluginVersion=$ROO_EXTENSION_VERSION buildPlugin --info" "IDEA plugin build"
+    log_info "Building IDEA plugin in $BUILD_MODE mode with version $ZOO_EXTENSION_VERSION..."
+    execute_cmd "$gradle_cmd -PdebugMode=$debug_mode -PvscodePlugin=zoo-code -PpluginVersion=$ZOO_EXTENSION_VERSION buildPlugin --info" "IDEA plugin build"
     
     # Find generated plugin
     local plugin_file
@@ -603,11 +545,11 @@ build_idea_with_roo() {
     # Copy to output directory
     copy_files "$plugin_file" "$EXTENSION_OUTPUT_DIR/" "IDEA plugin"
     
-    log_success "IDEA plugin built with Roo Code: $(basename "$plugin_file")"
+    log_success "IDEA plugin built with Zoo Code: $(basename "$plugin_file")"
     
-    # Rename the plugin file to use RooCode name with correct version
+    # Rename the plugin file to use ZooCode name with correct version
     local old_name=$(basename "$plugin_file")
-    local new_plugin_name="RooCode-${ROO_EXTENSION_VERSION}.zip"
+    local new_plugin_name="ZooCode-${ZOO_EXTENSION_VERSION}.zip"
     local new_plugin_path="$EXTENSION_OUTPUT_DIR/$new_plugin_name"
     
     # Remove any existing file with the new name
@@ -627,7 +569,7 @@ build_idea_with_roo() {
 }
 
 # Copy debug resources if needed
-copy_debug_resources_with_roo() {
+copy_debug_resources_with_zoo() {
     if [[ "$BUILD_MODE" != "debug" ]]; then
         return 0
     fi
@@ -637,12 +579,12 @@ copy_debug_resources_with_roo() {
     local debug_dir="$EXTENSION_OUTPUT_DIR/debug-resources"
     ensure_dir "$debug_dir"
     
-    # Copy Roo Code debug resources
-    local roo_debug="$debug_dir/roo-code"
-    ensure_dir "$roo_debug"
+    # Copy Zoo Code debug resources
+    local zoo_debug="$debug_dir/zoo-code"
+    ensure_dir "$zoo_debug"
     
-    if [[ -d "$IDEA_BUILD_DIR/plugins/roo-code" ]]; then
-        copy_files "$IDEA_BUILD_DIR/plugins/roo-code/*" "$roo_debug/" "Roo Code debug resources"
+    if [[ -d "$IDEA_BUILD_DIR/plugins/zoo-code" ]]; then
+        copy_files "$IDEA_BUILD_DIR/plugins/zoo-code/*" "$zoo_debug/" "Zoo Code debug resources"
     fi
     
     # Copy Extension Host debug resources
@@ -662,21 +604,21 @@ create_installation_instructions() {
     local readme_file="$EXTENSION_OUTPUT_DIR/README.md"
     
     cat > "$readme_file" << EOF
-# RunVSAgent with Roo Code - Build Output
+# Zoo Code JetBrains with Zoo Code - Build Output
 
-This directory contains the complete build of RunVSAgent with Roo Code pre-packaged.
+This directory contains the complete build of Zoo Code JetBrains with Zoo Code pre-packaged.
 
 ## Build Information
 - Build Date: $(date)
 - Build Mode: $BUILD_MODE
-- Roo Code Version: $ROO_EXTENSION_VERSION
+- Zoo Code Version: $ZOO_EXTENSION_VERSION
 
 ## Contents
 
 ### IDEA Plugin
 The IDEA plugin file (\`*.zip\` or \`*.jar\`) includes:
-- Complete RunVSAgent integration
-- Pre-packaged Roo Code extension
+- Complete Zoo Code JetBrains integration
+- Pre-packaged Zoo Code extension
 - Extension Host runtime
 - All required dependencies
 
@@ -715,14 +657,14 @@ EOF
 ### Verifying Installation
 
 After installation:
-1. Look for the RunVSAgent toolbar in your IDE
-2. Click on the Roo Code icon to open the assistant
+1. Look for the Zoo Code JetBrains toolbar in your IDE
+2. Click on the Zoo Code icon to open the assistant
 3. The extension should be ready to use immediately
 
 ### Configuration
 
-The Roo Code extension is pre-configured and ready to use. You can customize settings through:
-- IDE Settings → RunVSAgent → Extensions
+The Zoo Code extension is pre-configured and ready to use. You can customize settings through:
+- IDE Settings → Zoo Code JetBrains → Extensions
 - The extension's own settings panel
 
 ## Troubleshooting
@@ -755,37 +697,36 @@ EOF
 
 # Main build process
 main() {
-    log_info "Starting RunVSAgent build with Roo Code extension"
+    log_info "Starting Zoo Code JetBrains build with Zoo Code extension"
     log_info "Build mode: $BUILD_MODE"
     
     # Parse arguments
     parse_args "$@"
     
     # Initialize environment
-    init_roo_build_env
+    init_zoo_build_env
     
     # Check requirements
     check_requirements
     
-    # Get latest Roo Code version
-    get_latest_roo_version
+    # Get latest Zoo Code version
+    get_latest_zoo_version
     
-    log_info "Using Roo Code extension v$ROO_EXTENSION_VERSION"
+    log_info "Using Zoo Code extension v$ZOO_EXTENSION_VERSION"
     
     # Clean if requested
     clean_build_artifacts
     
-    # Download and prepare Roo Code
-    download_roo_extension
-    prepare_roo_extension
+    # Download and prepare Zoo Code
+    download_zoo_extension
+    prepare_zoo_extension
     
     # Build components
-    build_vscode_if_needed
     build_extension_host_component
-    build_idea_with_roo
+    build_idea_with_zoo
     
     # Copy debug resources
-    copy_debug_resources_with_roo
+    copy_debug_resources_with_zoo
     
     # Create documentation
     create_installation_instructions

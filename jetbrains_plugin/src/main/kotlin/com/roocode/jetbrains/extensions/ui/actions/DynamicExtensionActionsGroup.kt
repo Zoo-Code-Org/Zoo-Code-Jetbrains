@@ -12,7 +12,7 @@ import com.intellij.icons.AllIcons
 import com.roocode.jetbrains.extensions.core.ExtensionManager
 import com.roocode.jetbrains.extensions.config.ExtensionProvider
 import com.roocode.jetbrains.extensions.common.ExtensionChangeListener
-import com.roocode.jetbrains.extensions.plugin.roo.RooCodeButtonProvider
+import com.roocode.jetbrains.extensions.plugin.zoo.ZooCodeButtonProvider
 import com.roocode.jetbrains.extensions.ui.buttons.ExtensionButtonProvider
 
 /**
@@ -85,7 +85,7 @@ class DynamicExtensionActionsGroup : DefaultActionGroup(), DumbAware, ActionUpda
         
         // 创建新的ButtonProvider实例（仅在扩展类型改变时）
         val buttonProvider = when (extensionId) {
-            "roo-code" -> RooCodeButtonProvider()
+            "zoo-code" -> ZooCodeButtonProvider()
             else -> null
         }
         

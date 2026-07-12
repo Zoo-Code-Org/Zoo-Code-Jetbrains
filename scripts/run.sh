@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# Default script to run IDE with Roo Code extension
+# Default script to run IDE with Zoo Code extension
 # This ensures all files are in the right place for development
 
-echo "🚀 Starting IDE with Roo Code extension..."
+echo "🚀 Starting IDE with Zoo Code extension..."
 
 # Get the project root directory
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -33,11 +33,11 @@ echo "✅ Extension Host built successfully!"
 # Now build and run the IDE plugin
 cd "$PROJECT_ROOT/jetbrains_plugin"
 
-# Build and run in release mode with Roo Code (default)
-echo "📦 Building plugin with Roo Code..."
-./gradlew clean buildPlugin -PdebugMode=release -PvscodePlugin=roo-code
+# Build and run in release mode with Zoo Code (default)
+echo "📦 Building plugin with Zoo Code..."
+./gradlew clean buildPlugin -PdebugMode=release -PvscodePlugin=zoo-code
 
 echo "🏃 Starting IDE..."
-./gradlew runIde -PdebugMode=release -PvscodePlugin=roo-code
+./gradlew runIde -PdebugMode=release -PvscodePlugin=zoo-code
 
 echo "✅ Done!"

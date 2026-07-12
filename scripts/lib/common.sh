@@ -26,7 +26,6 @@ DRY_RUN=false
 
 # Project structure constants
 export VSCODE_SUBMODULE_PATH="deps/vscode"
-export PLUGIN_SUBMODULE_PATH="deps/roo-code"
 export EXTENSION_HOST_DIR="extension_host"
 
 # Logging functions

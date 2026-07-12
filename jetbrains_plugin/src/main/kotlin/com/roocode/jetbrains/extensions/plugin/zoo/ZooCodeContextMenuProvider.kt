@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package com.roocode.jetbrains.extensions.plugin.roo
+package com.roocode.jetbrains.extensions.plugin.zoo
 
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
@@ -15,20 +15,20 @@ import com.roocode.jetbrains.extensions.ui.contextmenu.ContextMenuActionType
 import com.roocode.jetbrains.webview.WebViewManager
 
 /**
- * Roo Code extension context menu provider.
- * Provides context menu actions specific to Roo Code extension.
- * This includes all the original roo-cline functionality.
+ * Zoo Code extension context menu provider.
+ * Provides context menu actions specific to Zoo Code extension.
+ * This includes all the original zoo-code functionality.
  */
-class RooCodeContextMenuProvider : ExtensionContextMenuProvider {
+class ZooCodeContextMenuProvider : ExtensionContextMenuProvider {
     
-    override fun getExtensionId(): String = "roo-code"
+    override fun getExtensionId(): String = "zoo-code"
     
-    override fun getDisplayName(): String = "Roo Code"
+    override fun getDisplayName(): String = "Zoo Code"
     
     override fun getDescription(): String = "AI-powered code assistant with full context menu capabilities"
     
     override fun isAvailable(project: Project): Boolean {
-        // Check if roo-code extension is available
+        // Check if zoo-code extension is available
         return true
     }
     
@@ -43,15 +43,15 @@ class RooCodeContextMenuProvider : ExtensionContextMenuProvider {
     }
     
     override fun getContextMenuConfiguration(): ContextMenuConfiguration {
-        return RooCodeContextMenuConfiguration()
+        return ZooCodeContextMenuConfiguration()
     }
     
     /**
-     * Roo Code context menu configuration - shows all actions (full-featured).
+     * Zoo Code context menu configuration - shows all actions (full-featured).
      */
-    private class RooCodeContextMenuConfiguration : ContextMenuConfiguration {
+    private class ZooCodeContextMenuConfiguration : ContextMenuConfiguration {
         override fun isActionVisible(actionType: ContextMenuActionType): Boolean {
-            return true // All actions are visible for Roo Code
+            return true // All actions are visible for Zoo Code
         }
         
         override fun getVisibleActions(): List<ContextMenuActionType> {
@@ -71,7 +71,7 @@ class RooCodeContextMenuProvider : ExtensionContextMenuProvider {
             val editor = e.getData(CommonDataKeys.EDITOR) ?: return
             val file = e.dataContext.getData(CommonDataKeys.VIRTUAL_FILE) ?: return
             
-            val effectiveRange = RooCodeContextMenuProvider.getEffectiveRange(editor)
+            val effectiveRange = ZooCodeContextMenuProvider.getEffectiveRange(editor)
             if (effectiveRange == null) return
             
             val args = mutableMapOf<String, Any?>()
@@ -80,7 +80,7 @@ class RooCodeContextMenuProvider : ExtensionContextMenuProvider {
             args["startLine"] = effectiveRange.startLine + 1
             args["endLine"] = effectiveRange.endLine + 1
             
-            RooCodeContextMenuProvider.handleCodeAction("roo-cline.explainCode.InCurrentTask", "EXPLAIN", args, project)
+            ZooCodeContextMenuProvider.handleCodeAction("zoo-code.explainCode", "EXPLAIN", args, project)
         }
     }
 
@@ -96,7 +96,7 @@ class RooCodeContextMenuProvider : ExtensionContextMenuProvider {
             val editor = e.getData(CommonDataKeys.EDITOR) ?: return
             val file = e.dataContext.getData(CommonDataKeys.VIRTUAL_FILE) ?: return
             
-            val effectiveRange = RooCodeContextMenuProvider.getEffectiveRange(editor)
+            val effectiveRange = ZooCodeContextMenuProvider.getEffectiveRange(editor)
             if (effectiveRange == null) return
             
             val args = mutableMapOf<String, Any?>()
@@ -105,7 +105,7 @@ class RooCodeContextMenuProvider : ExtensionContextMenuProvider {
             args["startLine"] = effectiveRange.startLine + 1
             args["endLine"] = effectiveRange.endLine + 1
             
-            RooCodeContextMenuProvider.handleCodeAction("roo-cline.fixCode.InCurrentTask", "FIX", args, project)
+            ZooCodeContextMenuProvider.handleCodeAction("zoo-code.fixCode", "FIX", args, project)
         }
     }
 
@@ -121,7 +121,7 @@ class RooCodeContextMenuProvider : ExtensionContextMenuProvider {
             val editor = e.getData(CommonDataKeys.EDITOR) ?: return
             val file = e.dataContext.getData(CommonDataKeys.VIRTUAL_FILE) ?: return
             
-            val effectiveRange = RooCodeContextMenuProvider.getEffectiveRange(editor)
+            val effectiveRange = ZooCodeContextMenuProvider.getEffectiveRange(editor)
             if (effectiveRange == null) return
             
             val args = mutableMapOf<String, Any?>()
@@ -130,7 +130,7 @@ class RooCodeContextMenuProvider : ExtensionContextMenuProvider {
             args["startLine"] = effectiveRange.startLine + 1
             args["endLine"] = effectiveRange.endLine + 1
             
-            RooCodeContextMenuProvider.handleCodeAction("roo-cline.fixCode.InCurrentTask", "FIX", args, project)
+            ZooCodeContextMenuProvider.handleCodeAction("zoo-code.fixCode", "FIX", args, project)
         }
     }
 
@@ -146,7 +146,7 @@ class RooCodeContextMenuProvider : ExtensionContextMenuProvider {
             val editor = e.getData(CommonDataKeys.EDITOR) ?: return
             val file = e.dataContext.getData(CommonDataKeys.VIRTUAL_FILE) ?: return
             
-            val effectiveRange = RooCodeContextMenuProvider.getEffectiveRange(editor)
+            val effectiveRange = ZooCodeContextMenuProvider.getEffectiveRange(editor)
             if (effectiveRange == null) return
             
             val args = mutableMapOf<String, Any?>()
@@ -155,7 +155,7 @@ class RooCodeContextMenuProvider : ExtensionContextMenuProvider {
             args["startLine"] = effectiveRange.startLine + 1
             args["endLine"] = effectiveRange.endLine + 1
             
-            RooCodeContextMenuProvider.handleCodeAction("roo-cline.improveCode.InCurrentTask", "IMPROVE", args, project)
+            ZooCodeContextMenuProvider.handleCodeAction("zoo-code.improveCode", "IMPROVE", args, project)
         }
     }
 
@@ -171,7 +171,7 @@ class RooCodeContextMenuProvider : ExtensionContextMenuProvider {
             val editor = e.getData(CommonDataKeys.EDITOR) ?: return
             val file = e.dataContext.getData(CommonDataKeys.VIRTUAL_FILE) ?: return
             
-            val effectiveRange = RooCodeContextMenuProvider.getEffectiveRange(editor)
+            val effectiveRange = ZooCodeContextMenuProvider.getEffectiveRange(editor)
             if (effectiveRange == null) return
             
             val args = mutableMapOf<String, Any?>()
@@ -180,7 +180,7 @@ class RooCodeContextMenuProvider : ExtensionContextMenuProvider {
             args["startLine"] = effectiveRange.startLine + 1
             args["endLine"] = effectiveRange.endLine + 1
             
-            RooCodeContextMenuProvider.handleCodeAction("roo-cline.addToContext", "ADD_TO_CONTEXT", args, project)
+            ZooCodeContextMenuProvider.handleCodeAction("zoo-code.addToContext", "ADD_TO_CONTEXT", args, project)
         }
     }
 
@@ -196,7 +196,7 @@ class RooCodeContextMenuProvider : ExtensionContextMenuProvider {
             val editor = e.getData(CommonDataKeys.EDITOR) ?: return
             val file = e.dataContext.getData(CommonDataKeys.VIRTUAL_FILE) ?: return
             
-            val effectiveRange = RooCodeContextMenuProvider.getEffectiveRange(editor)
+            val effectiveRange = ZooCodeContextMenuProvider.getEffectiveRange(editor)
             if (effectiveRange == null) return
             
             val args = mutableMapOf<String, Any?>()
@@ -205,7 +205,7 @@ class RooCodeContextMenuProvider : ExtensionContextMenuProvider {
             args["startLine"] = effectiveRange.startLine + 1
             args["endLine"] = effectiveRange.endLine + 1
             
-            RooCodeContextMenuProvider.handleCodeAction("roo-cline.newTask", "NEW_TASK", args, project)
+            ZooCodeContextMenuProvider.handleCodeAction("zoo-code.newTask", "NEW_TASK", args, project)
         }
     }
 
@@ -276,7 +276,7 @@ class RooCodeContextMenuProvider : ExtensionContextMenuProvider {
                     mapOf(
                         "type" to "invoke",
                         "invoke" to "setChatBoxMessage",
-                        "text" to RooCodeSupportPrompt.create("ADD_TO_CONTEXT", promptParams)
+                        "text" to ZooCodeSupportPrompt.create("ADD_TO_CONTEXT", promptParams)
                     )
                 }
                 // Command executed in current task
@@ -291,7 +291,7 @@ class RooCodeContextMenuProvider : ExtensionContextMenuProvider {
                     mapOf(
                         "type" to "invoke",
                         "invoke" to "sendMessage",
-                        "text" to RooCodeSupportPrompt.create(basePromptType, promptParams)
+                        "text" to ZooCodeSupportPrompt.create(basePromptType, promptParams)
                     )
                 }
                 // Command executed in new task
@@ -325,7 +325,7 @@ class RooCodeContextMenuProvider : ExtensionContextMenuProvider {
                     mapOf(
                         "type" to "invoke",
                         "invoke" to "initClineWithTask",
-                        "text" to RooCodeSupportPrompt.create(basePromptType, promptParams)
+                        "text" to ZooCodeSupportPrompt.create(basePromptType, promptParams)
                     )
                 }
             }

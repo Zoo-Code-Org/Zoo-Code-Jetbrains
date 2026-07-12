@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Test script for RunVSAgent project
+# Test script for Zoo Code JetBrains project
 # This script runs various tests and validations
 
 set -euo pipefail
@@ -29,7 +29,7 @@ WATCH_MODE=false
 # Show help for this script
 show_help() {
     cat << EOF
-$SCRIPT_NAME - Run tests for RunVSAgent project
+$SCRIPT_NAME - Run tests for Zoo Code JetBrains project
 
 USAGE:
     $SCRIPT_NAME [OPTIONS] [TEST_TYPE]
@@ -492,7 +492,7 @@ generate_test_report() {
     ensure_dir "$(dirname "$report_file")"
     
     cat > "$report_file" << EOF
-RunVSAgent Test Report
+Zoo Code JetBrains Test Report
 =====================
 
 Date: $(date)
@@ -552,7 +552,7 @@ show_test_summary() {
 
 # Main test function
 main() {
-    log_info "Starting RunVSAgent test process..."
+    log_info "Starting Zoo Code JetBrains test process..."
     log_info "Script: $SCRIPT_NAME v$SCRIPT_VERSION"
     log_info "Platform: $(get_platform)"
     log_info "Project root: $PROJECT_ROOT"

@@ -13,7 +13,7 @@ coverage/
 
 # Builds
 bin/
-roo-cline-*.vsix
+zoo-code-*.vsix
 
 # Local prompts and rules
 /local-prompts
@@ -47,9 +47,7 @@ logs
 
 # vscode import
 extension_host/vscode/*
-deps/roo-code/*
 deps/vscode/*
-!deps/roo-code/.git
 !deps/vscode/.git
 jetbrains_plugin/plugins
 jetbrains_plugin/build
@@ -58,5 +56,5 @@ deps/vsix/package/*
 deps/vsix/plugin/*
 -e 
 # Roo build artifacts
-.roo-build/
+.zoo-build/
 dist-with-roo/

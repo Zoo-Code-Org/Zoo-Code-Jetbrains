@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Clean script for RunVSAgent project
+# Clean script for Zoo Code JetBrains project
 # This script cleans build artifacts and temporary files
 
 set -euo pipefail
@@ -29,7 +29,7 @@ KEEP_LOGS=false
 # Show help for this script
 show_help() {
     cat << EOF
-$SCRIPT_NAME - Clean RunVSAgent project artifacts
+$SCRIPT_NAME - Clean Zoo Code JetBrains project artifacts
 
 USAGE:
     $SCRIPT_NAME [OPTIONS] [TARGET]
@@ -213,7 +213,7 @@ clean_build_artifacts() {
     if [[ -d "$idea_dir" ]]; then
         log_info "Cleaning IDEA plugin build..."
         remove_dir "$idea_dir/build"
-        remove_dir "$idea_dir/roo-code"
+        remove_dir "$idea_dir/zoo-code"
         [[ -f "$idea_dir/prodDep.txt" ]] && rm -f "$idea_dir/prodDep.txt"
     fi
     
@@ -442,7 +442,7 @@ show_clean_summary() {
 
 # Main clean function
 main() {
-    log_info "Starting RunVSAgent clean process..."
+    log_info "Starting Zoo Code JetBrains clean process..."
     log_info "Script: $SCRIPT_NAME v$SCRIPT_VERSION"
     log_info "Platform: $(get_platform)"
     log_info "Project root: $PROJECT_ROOT"

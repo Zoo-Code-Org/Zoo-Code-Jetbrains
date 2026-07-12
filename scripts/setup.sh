@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Setup script for RunVSAgent project
+# Setup script for Zoo Code JetBrains project
 # This script initializes the development environment and dependencies
 
 set -euo pipefail
@@ -23,7 +23,7 @@ APPLY_PATCHES=true
 # Show help for this script
 show_help() {
     cat << EOF
-$SCRIPT_NAME - Setup development environment for RunVSAgent
+$SCRIPT_NAME - Setup development environment for Zoo Code JetBrains
 
 USAGE:
     $SCRIPT_NAME [OPTIONS]
@@ -276,8 +276,8 @@ install_dependencies() {
         execute_cmd "npm install" "extension host dependencies installation"
     fi
     
-    # Install VSCode extension dependencies
-    local vscode_dir="$PROJECT_ROOT/$PLUGIN_SUBMODULE_PATH"
+    # Install VS Code source dependencies used by the extension host.
+    local vscode_dir="$PROJECT_ROOT/$VSCODE_SUBMODULE_PATH"
     if [[ -d "$vscode_dir" && -f "$vscode_dir/package.json" ]]; then
         log_info "Installing VSCode extension dependencies..."
         cd "$vscode_dir"
@@ -488,7 +488,7 @@ verify_setup() {
 
 # Main setup function
 main() {
-    log_info "Starting RunVSAgent development environment setup..."
+    log_info "Starting Zoo Code JetBrains development environment setup..."
     log_info "Script: $SCRIPT_NAME v$SCRIPT_VERSION"
     log_info "Platform: $(get_platform)"
     log_info "Project root: $PROJECT_ROOT"

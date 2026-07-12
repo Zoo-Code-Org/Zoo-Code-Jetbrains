@@ -4,13 +4,13 @@
 [![Node.js](https://img.shields.io/badge/Node.js-18%2B-green.svg)](https://nodejs.org/)
 [![JetBrains](https://img.shields.io/badge/JetBrains-IntelliJ%20Platform-orange.svg)](https://www.jetbrains.com/)
 
-> **Welcome to contribute to the RunVSAgent project!**
+> **Welcome to contribute to the Zoo Code JetBrains project!**
 
-Thank you for your interest in contributing to RunVSAgent! RunVSAgent is an innovative cross-platform development tool that enables developers to run VSCode-based coding agents and extensions within JetBrains IDEs. Your contributions help us build a better development experience for the community.
+Thank you for your interest in contributing to Zoo Code JetBrains! Zoo Code JetBrains is an innovative cross-platform development tool that enables developers to run VSCode-based coding agents and extensions within JetBrains IDEs. Your contributions help us build a better development experience for the community.
 
 ## 🎯 Project Overview
 
-RunVSAgent bridges the gap between VSCode extensions and JetBrains IDEs through:
+Zoo Code JetBrains bridges the gap between VSCode extensions and JetBrains IDEs through:
 - **Cross-platform compatibility**: Run VSCode agents in IntelliJ IDEA, WebStorm, PyCharm, and other JetBrains IDEs
 - **Seamless integration**: Native IDE experience with VSCode extension capabilities
 - **High-performance communication**: RPC-based architecture for real-time interaction
@@ -53,11 +53,11 @@ Before you begin, ensure you have the following installed:
 
 ```bash
 # Fork the repository on GitHub, then clone your fork
-git clone https://github.com/YOUR_USERNAME/RunVSAgent.git
-cd RunVSAgent
+git clone https://github.com/YOUR_USERNAME/Zoo Code JetBrains.git
+cd Zoo Code JetBrains
 
 # Add the original repository as upstream
-git remote add upstream https://github.com/original-org/RunVSAgent.git
+git remote add upstream https://github.com/original-org/Zoo Code JetBrains.git
 ```
 
 2. **Initialize Development Environment**
@@ -823,12 +823,12 @@ When reporting bugs, please include:
    - Operating System (Windows/macOS/Linux)
    - JetBrains IDE version
    - Node.js version
-   - RunVSAgent version
+   - Zoo Code JetBrains version
 
 3. **Steps to Reproduce**:
    ```
    1. Open IntelliJ IDEA
-   2. Install RunVSAgent plugin
+   2. Install Zoo Code JetBrains plugin
    3. Load a VSCode extension
    4. Execute command X
    5. Observe the error
@@ -848,7 +848,7 @@ A clear and concise description of the bug.
 - OS: [e.g., macOS 13.0]
 - IDE: [e.g., IntelliJ IDEA 2023.2]
 - Node.js: [e.g., 18.17.0]
-- RunVSAgent: [e.g., 1.2.0]
+- Zoo Code JetBrains: [e.g., 1.2.0]
 
 ## Steps to Reproduce
 1. Step one
@@ -1130,8 +1130,8 @@ Ready to contribute? Here's your getting started checklist:
 ### Maintainers
 
 - **WeCode-AI Team, Weibo Inc.**
-- **GitHub**: [Project Repository](https://github.com/your-org/RunVSAgent)
-- **Issues**: [GitHub Issues](https://github.com/your-org/RunVSAgent/issues)
+- **GitHub**: [Project Repository](https://github.com/your-org/Zoo Code JetBrains)
+- **Issues**: [GitHub Issues](https://github.com/your-org/Zoo Code JetBrains/issues)
 
 ### Support Channels
 
@@ -1145,10 +1145,10 @@ Ready to contribute? Here's your getting started checklist:
 
 This project is licensed under the Apache License 2.0. See [LICENSE](LICENSE) for details.
 
-By contributing to RunVSAgent, you agree that your contributions will be licensed under the Apache License 2.0.
+By contributing to Zoo Code JetBrains, you agree that your contributions will be licensed under the Apache License 2.0.
 
 ---
 
-**Thank you for contributing to RunVSAgent! 🚀**
+**Thank you for contributing to Zoo Code JetBrains! 🚀**
 
 *Together, we're building the future of cross-platform development tools.*

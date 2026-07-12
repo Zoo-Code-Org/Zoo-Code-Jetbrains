@@ -15,8 +15,8 @@ import java.io.IOException
 object ConfigFileUtils {
 
     fun getCurrentExtensionId(): String? {
-        // Always return roo-code as the current extension
-        return "roo-code"
+        // Always return zoo-code as the current extension
+        return "zoo-code"
     }
     
     /**
@@ -53,7 +53,7 @@ object ConfigFileUtils {
     /**
      * Save properties to main configuration file
      */
-    fun saveMainConfig(properties: Properties, comment: String = "RunVSAgent Configuration") {
+    fun saveMainConfig(properties: Properties, comment: String = "Zoo Code JetBrains Configuration") {
         try {
             // Ensure configuration directory exists
             ensureConfigDirExists()
@@ -156,10 +156,10 @@ object ConfigFileUtils {
      */
     fun createDefaultMainConfig() {
         val properties = Properties()
-        properties.setProperty(PluginConstants.ConfigFiles.EXTENSION_TYPE_KEY, "roo-code")
-        properties.setProperty("# Default extension:", "roo-code (auto-configured)")
+        properties.setProperty(PluginConstants.ConfigFiles.EXTENSION_TYPE_KEY, "zoo-code")
+        properties.setProperty("# Default extension:", "zoo-code (auto-configured)")
         
-        saveMainConfig(properties, "RunVSAgent Extension Configuration - Roo Code Auto-Configured")
+        saveMainConfig(properties, "Zoo Code JetBrains Extension Configuration - Zoo Code Auto-Configured")
     }
     
     /**

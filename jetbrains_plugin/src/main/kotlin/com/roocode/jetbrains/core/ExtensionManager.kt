@@ -12,7 +12,7 @@ import com.roocode.jetbrains.extensions.config.ExtensionMetadata as ExtensionCon
 import com.roocode.jetbrains.ipc.proxy.IRPCProtocol
 import com.roocode.jetbrains.util.URI
 import com.roocode.jetbrains.util.toCompletableFuture
-import com.roocode.jetbrains.extensions.config.ExtensionConfig as RooExtensionConfig
+import com.roocode.jetbrains.extensions.config.ExtensionConfig as ZooExtensionConfig
 import java.io.File
 import java.nio.file.Paths
 import java.util.concurrent.CompletableFuture
@@ -39,7 +39,7 @@ class ExtensionManager : Disposable {
      * @param extensionConfig Extension configuration
      * @return Extension description object
      */
-    private fun parseExtensionDescription(extensionPath: String, extensionConfig: RooExtensionConfig): ExtensionDescription {
+    private fun parseExtensionDescription(extensionPath: String, extensionConfig: ZooExtensionConfig): ExtensionDescription {
         LOG.info("Parsing extension: $extensionPath")
         
         // Read package.json file
@@ -142,7 +142,7 @@ class ExtensionManager : Disposable {
      * @param extensionConfig Extension configuration
      * @return Extension description object
      */
-    fun registerExtension(extensionPath: String, extensionConfig: RooExtensionConfig): ExtensionDescription {
+    fun registerExtension(extensionPath: String, extensionConfig: ZooExtensionConfig): ExtensionDescription {
         val extensionDescription = parseExtensionDescription(extensionPath, extensionConfig)
         extensions[extensionDescription.name] = extensionDescription
         LOG.info("Extension registered: ${extensionDescription.name}")

@@ -54,37 +54,37 @@ class ExtensionConfigurationManager(private val project: Project) {
         
         // Check if configuration file exists
         if (!ConfigFileUtils.mainConfigExists()) {
-            // No config file, create default with roo-code
-            logger.info("No configuration found, creating default with Roo Code")
-            currentExtensionId = "roo-code"
+            // No config file, create default with zoo-code
+            logger.info("No configuration found, creating default with Zoo Code")
+            currentExtensionId = "zoo-code"
             isConfigurationValid = true
             isConfigurationLoaded = true
             configurationLoadTime = System.currentTimeMillis()
             
-            // Save configuration to disk so Roo Code can find it
+            // Save configuration to disk so Zoo Code can find it
             try {
                 saveConfiguration()
-                logger.info("Default Roo Code configuration saved")
+                logger.info("Default Zoo Code configuration saved")
             } catch (e: Exception) {
                 logger.warn("Failed to save default configuration", e)
             }
         } else {
-            // Config file exists, but always override with roo-code
+            // Config file exists, but always override with zoo-code
             loadConfiguration()
-            if (currentExtensionId != "roo-code") {
-                logger.info("Overriding configuration to use Roo Code")
-                currentExtensionId = "roo-code"
+            if (currentExtensionId != "zoo-code") {
+                logger.info("Overriding configuration to use Zoo Code")
+                currentExtensionId = "zoo-code"
                 isConfigurationValid = true
                 isConfigurationLoaded = true
                 try {
                     saveConfiguration()
                 } catch (e: Exception) {
-                    logger.warn("Failed to update configuration to Roo Code", e)
+                    logger.warn("Failed to update configuration to Zoo Code", e)
                 }
             }
         }
         
-        logger.info("Configuration manager initialized with Roo Code")
+        logger.info("Configuration manager initialized with Zoo Code")
     }
     
     /**
@@ -183,7 +183,7 @@ class ExtensionConfigurationManager(private val project: Project) {
             listOf(
                 "1. Check if ${PluginConstants.ConfigFiles.MAIN_CONFIG_FILE} file exists in project root",
                 "2. Ensure '${PluginConstants.ConfigFiles.EXTENSION_TYPE_KEY}' property is set to a valid extension ID",
-                "3. Valid extension types: roo-code, cline, custom",
+                "3. Valid extension types: zoo-code, cline, custom",
                 "4. Try running 'createDefaultConfiguration()' to generate a template",
                 "5. Check file permissions and ensure the file is readable"
             )
@@ -201,8 +201,8 @@ class ExtensionConfigurationManager(private val project: Project) {
             isConfigurationValid = false
             configurationLoadTime = System.currentTimeMillis()
             
-            // Always default to roo-code
-            currentExtensionId = "roo-code"
+            // Always default to zoo-code
+            currentExtensionId = "zoo-code"
             isConfigurationValid = true
             
             // Still try to load from file if it exists to check for overrides
@@ -210,24 +210,24 @@ class ExtensionConfigurationManager(private val project: Project) {
                 val properties = ConfigFileUtils.loadMainConfig()
                 val configuredId = properties.getProperty(PluginConstants.ConfigFiles.EXTENSION_TYPE_KEY)
                 
-                // Only use configured ID if it's explicitly NOT roo-code (for future flexibility)
-                if (!configuredId.isNullOrBlank() && configuredId != "roo-code") {
-                    logger.info("Found override configuration: $configuredId, but will use roo-code anyway")
+                // Only use configured ID if it's explicitly NOT zoo-code (for future flexibility)
+                if (!configuredId.isNullOrBlank() && configuredId != "zoo-code") {
+                    logger.info("Found override configuration: $configuredId, but will use zoo-code anyway")
                 }
             } else {
-                logger.info("No configuration file found, using default Roo Code extension")
+                logger.info("No configuration file found, using default Zoo Code extension")
             }
             
-            // Always end with roo-code
-            currentExtensionId = "roo-code"
+            // Always end with zoo-code
+            currentExtensionId = "zoo-code"
             isConfigurationValid = true
             isConfigurationLoaded = true
             
-            logger.info("Configuration loaded with Roo Code extension")
+            logger.info("Configuration loaded with Zoo Code extension")
         } catch (e: Exception) {
-            logger.warn("Error during configuration load, defaulting to Roo Code", e)
-            // Even on error, default to roo-code
-            currentExtensionId = "roo-code"
+            logger.warn("Error during configuration load, defaulting to Zoo Code", e)
+            // Even on error, default to zoo-code
+            currentExtensionId = "zoo-code"
             isConfigurationValid = true
             isConfigurationLoaded = true
         }

@@ -30,10 +30,10 @@ init_build_env() {
     
     # Set build paths
     export BUILD_TEMP_DIR="$(mktemp -d -t ${TEMP_PREFIX}XXXXXX)"
-    export PLUGIN_BUILD_DIR="$PROJECT_ROOT/$PLUGIN_SUBMODULE_PATH"
+    export PLUGIN_BUILD_DIR="$PROJECT_ROOT/$VSCODE_SUBMODULE_PATH"
     export BASE_BUILD_DIR="$PROJECT_ROOT/$EXTENSION_HOST_DIR"
     export IDEA_BUILD_DIR="$PROJECT_ROOT/$IDEA_DIR"
-    export VSCODE_PLUGIN_NAME="${VSCODE_PLUGIN_NAME:-roo-code}"
+    export VSCODE_PLUGIN_NAME="${VSCODE_PLUGIN_NAME:-zoo-code}"
     export VSCODE_PLUGIN_TARGET_DIR="$IDEA_BUILD_DIR/plugins/${VSCODE_PLUGIN_NAME}"
     
     # Validate build tools

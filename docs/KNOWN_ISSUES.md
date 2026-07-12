@@ -1,6 +1,6 @@
 # Known Issues
 
-This document records the known issues, limitations, and solutions for the RunVSAgent project.
+This document records the known issues, limitations, and solutions for the Zoo Code JetBrains project.
 
 ## 1. JCEF Related Issues
 

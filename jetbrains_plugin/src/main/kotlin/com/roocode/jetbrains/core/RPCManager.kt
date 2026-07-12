@@ -33,7 +33,7 @@ class RPCManager(
         setupDefaultProtocols()
         setupExtensionRequiredProtocols()
         setupWeCodeRequiredProtocols()
-        setupRooCodeFuncitonProtocols()
+        setupZooCodeFuncitonProtocols()
         setupKiloCodeFunctionProtocols()
         setupWebviewProtocols()
     }
@@ -234,8 +234,8 @@ class RPCManager(
         rpcProtocol.set(ServiceProxyRegistry.MainContext.MainThreadMessageService, MainThreadMessageService())
     }
 
-    private fun setupRooCodeFuncitonProtocols() {
-        logger.info("Setting up protocol handlers required for RooCode specific functionality")
+    private fun setupZooCodeFuncitonProtocols() {
+        logger.info("Setting up protocol handlers required for ZooCode specific functionality")
 
         // MainThreadFileSystemEventService
         rpcProtocol.set(

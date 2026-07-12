@@ -9,7 +9,7 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 import com.roocode.jetbrains.extensions.common.ExtensionChangeListener
 import com.roocode.jetbrains.extensions.config.ExtensionProvider
-import com.roocode.jetbrains.extensions.plugin.roo.RooExtensionProvider
+import com.roocode.jetbrains.extensions.plugin.zoo.ZooExtensionProvider
 import com.roocode.jetbrains.extensions.ui.buttons.DynamicButtonManager
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
@@ -49,15 +49,15 @@ class ExtensionManager(private val project: Project) {
         // Register all available extension providers
         registerExtensionProviders()
         
-        // ALWAYS use roo-code as the default extension
-        val rooCodeId = "roo-code"
-        val provider = extensionProviders[rooCodeId]
+        // ALWAYS use zoo-code as the default extension
+        val zooCodeId = "zoo-code"
+        val provider = extensionProviders[zooCodeId]
         if (provider != null && provider.isAvailable(project)) {
             currentProvider = provider
-            LOG.info("Auto-selected Roo Code extension provider")
+            LOG.info("Auto-selected Zoo Code extension provider")
         } else {
-            LOG.warn("Roo Code extension provider not available, trying to use configured: $configuredExtensionId")
-            // Fallback to configured extension if roo-code is not available
+            LOG.warn("Zoo Code extension provider not available, trying to use configured: $configuredExtensionId")
+            // Fallback to configured extension if zoo-code is not available
             if (configuredExtensionId != null) {
                 val configuredProvider = extensionProviders[configuredExtensionId]
                 if (configuredProvider != null && configuredProvider.isAvailable(project)) {
@@ -104,7 +104,7 @@ class ExtensionManager(private val project: Project) {
 
     fun getAllExtensions(): List<ExtensionProvider> {
         return ArrayList<ExtensionProvider>().apply {
-            add(RooExtensionProvider())
+            add(ZooExtensionProvider())
         }
     }
     
@@ -131,11 +131,11 @@ class ExtensionManager(private val project: Project) {
         val availableProviders = extensionProviders.values.filter { it.isAvailable(project) }
         
         if (availableProviders.isNotEmpty()) {
-            // Prefer roo-code as default provider
-            val rooProvider = availableProviders.find { it.getExtensionId() == "roo-code" }
+            // Prefer zoo-code as default provider
+            val rooProvider = availableProviders.find { it.getExtensionId() == "zoo-code" }
             if (rooProvider != null) {
                 currentProvider = rooProvider
-                LOG.info("Set default extension provider: roo-code (preferred)")
+                LOG.info("Set default extension provider: zoo-code (preferred)")
             } else {
                 // Fallback to first available provider
                 currentProvider = availableProviders.first()

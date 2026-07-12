@@ -6,7 +6,7 @@ package com.roocode.jetbrains.extensions
 
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.roocode.jetbrains.extensions.core.ExtensionManager
-import com.roocode.jetbrains.extensions.plugin.roo.RooExtensionProvider
+import com.roocode.jetbrains.extensions.plugin.zoo.ZooExtensionProvider
 import com.roocode.jetbrains.extensions.plugin.kilo.KiloCodeExtensionProvider
 
 /**
@@ -33,40 +33,40 @@ class ExtensionDecouplingTest : BasePlatformTestCase() {
         assertTrue("Should have at least 3 extension providers", allProviders.size >= 3)
         
         // Check specific providers
-        val rooProvider = extensionManager.getProvider("roo-code")
-        assertNotNull("Roo Code provider should be registered", rooProvider)
-        assertEquals("Roo Code", rooProvider?.getDisplayName())
+        val rooProvider = extensionManager.getProvider("zoo-code")
+        assertNotNull("Zoo Code provider should be registered", rooProvider)
+        assertEquals("Zoo Code", rooProvider?.getDisplayName())
     }
     
     fun testExtensionProviderSwitching() {
         // Test switching between extension providers
-        val rooProvider = extensionManager.getProvider("roo-code")
+        val rooProvider = extensionManager.getProvider("zoo-code")
 
         assertNotNull("Roo provider should exist", rooProvider)
 
         // In test environment, providers may not be available due to missing files
         // So we test the switching logic only if providers are available
         if (rooProvider?.isAvailable(project) == true) {
-            extensionManager.setCurrentProvider("roo-code")
-            assertEquals("Current provider should be roo-code", "roo-code", extensionManager.getCurrentProvider()?.getExtensionId())
+            extensionManager.setCurrentProvider("zoo-code")
+            assertEquals("Current provider should be zoo-code", "zoo-code", extensionManager.getCurrentProvider()?.getExtensionId())
         }
     }
     
     fun testExtensionConfiguration() {
-        val rooProvider = extensionManager.getProvider("roo-code")
+        val rooProvider = extensionManager.getProvider("zoo-code")
         assertNotNull("Roo provider should exist", rooProvider)
         
         val config = rooProvider?.getConfiguration(project)
         assertNotNull("Configuration should not be null", config)
         
-        assertEquals("Code directory should be roo-code", "roo-code", config?.getCodeDir())
+        assertEquals("Code directory should be zoo-code", "zoo-code", config?.getCodeDir())
         assertEquals("Publisher should be WeCode-AI", "WeCode-AI", config?.getPublisher())
         assertEquals("Version should be 1.0.0", "1.0.0", config?.getVersion())
     }
     
     fun testExtensionAvailability() {
         // Test extension availability checking
-        val rooProvider = extensionManager.getProvider("roo-code")
+        val rooProvider = extensionManager.getProvider("zoo-code")
 
         assertNotNull("Roo provider should exist", rooProvider)
 
@@ -79,7 +79,7 @@ class ExtensionDecouplingTest : BasePlatformTestCase() {
     fun testExtensionProviderInterface() {
         // Test that all providers implement the interface correctly
         val providers = listOf(
-            RooExtensionProvider(),
+            ZooExtensionProvider(),
             KiloCodeExtensionProvider(),
         )
         

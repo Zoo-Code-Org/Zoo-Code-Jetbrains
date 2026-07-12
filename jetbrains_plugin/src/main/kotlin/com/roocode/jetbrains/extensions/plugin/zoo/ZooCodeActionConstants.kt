@@ -2,31 +2,31 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package com.roocode.jetbrains.extensions.plugin.roo
+package com.roocode.jetbrains.extensions.plugin.zoo
 
 /** Type alias for prompt type identifiers */
-typealias RooCodeSupportPromptType = String
+typealias ZooCodeSupportPromptType = String
 /** Type alias for prompt parameters map */
-typealias RooCodePromptParams = Map<String, Any?>
+typealias ZooCodePromptParams = Map<String, Any?>
 
 /**
  * Data class representing a prompt configuration with a template string.
  * Templates contain placeholders that will be replaced with actual values.
  */
-data class RooCodeSupportPromptConfig(val template: String)
+data class ZooCodeSupportPromptConfig(val template: String)
 
 /**
  * Collection of predefined prompt configurations for different use cases.
  * Each configuration contains a template with placeholders for dynamic content.
  * 
- * now organized under the Roo Code extension.
+ * now organized under the Zoo Code extension.
  */
-object RooCodeSupportPromptConfigs {
+object ZooCodeSupportPromptConfigs {
     /**
      * Template for enhancing user prompts.
      * Instructs the AI to generate an improved version of the user's input.
      */
-    val ENHANCE = RooCodeSupportPromptConfig(
+    val ENHANCE = ZooCodeSupportPromptConfig(
         """Generate an enhanced version of this prompt (reply with only the enhanced prompt - no conversation, explanations, lead-in, bullet points, placeholders, or surrounding quotes):
 
 ${'$'}{userInput}"""
@@ -36,7 +36,7 @@ ${'$'}{userInput}"""
      * Template for explaining code.
      * Provides structure for code explanation requests with file path and line information.
      */
-    val EXPLAIN = RooCodeSupportPromptConfig(
+    val EXPLAIN = ZooCodeSupportPromptConfig(
         """Explain the following code from file path ${'$'}{filePath}:${'$'}{startLine}-${'$'}{endLine}
 ${'$'}{userInput}
 
@@ -54,7 +54,7 @@ Please provide a clear and concise explanation of what this code does, including
      * Template for fixing code issues.
      * Includes diagnostic information and structured format for issue resolution.
      */
-    val FIX = RooCodeSupportPromptConfig(
+    val FIX = ZooCodeSupportPromptConfig(
         """Fix any issues in the following code from file path ${'$'}{filePath}:${'$'}{startLine}-${'$'}{endLine}
 ${'$'}{diagnosticText}
 ${'$'}{userInput}
@@ -74,7 +74,7 @@ Please:
      * Template for improving code quality.
      * Focuses on readability, performance, best practices, and error handling.
      */
-    val IMPROVE = RooCodeSupportPromptConfig(
+    val IMPROVE = ZooCodeSupportPromptConfig(
         """Improve the following code from file path ${'$'}{filePath}:${'$'}{startLine}-${'$'}{endLine}
 ${'$'}{userInput}
 
@@ -95,7 +95,7 @@ Provide the improved code along with explanations for each enhancement."""
      * Template for adding code to context.
      * Simple format that includes file path, line range, and selected code.
      */
-    val ADD_TO_CONTEXT = RooCodeSupportPromptConfig(
+    val ADD_TO_CONTEXT = ZooCodeSupportPromptConfig(
         """${'$'}{filePath}:${'$'}{startLine}-${'$'}{endLine}
 ```
 ${'$'}{selectedText}
@@ -106,7 +106,7 @@ ${'$'}{selectedText}
      * Template for adding terminal output to context.
      * Includes user input and terminal content.
      */
-    val TERMINAL_ADD_TO_CONTEXT = RooCodeSupportPromptConfig(
+    val TERMINAL_ADD_TO_CONTEXT = ZooCodeSupportPromptConfig(
         """${'$'}{userInput}
 Terminal output:
 ```
@@ -118,7 +118,7 @@ ${'$'}{terminalContent}
      * Template for fixing terminal commands.
      * Structured format for identifying and resolving command issues.
      */
-    val TERMINAL_FIX = RooCodeSupportPromptConfig(
+    val TERMINAL_FIX = ZooCodeSupportPromptConfig(
         """${'$'}{userInput}
 Fix this terminal command:
 ```
@@ -135,7 +135,7 @@ Please:
      * Template for explaining terminal commands.
      * Provides structure for command explanation with focus on functionality and behavior.
      */
-    val TERMINAL_EXPLAIN = RooCodeSupportPromptConfig(
+    val TERMINAL_EXPLAIN = ZooCodeSupportPromptConfig(
         """${'$'}{userInput}
 Explain this terminal command:
 ```
@@ -152,7 +152,7 @@ Please provide:
      * Template for creating a new task.
      * Simple format that passes through user input directly.
      */
-    val NEW_TASK = RooCodeSupportPromptConfig(
+    val NEW_TASK = ZooCodeSupportPromptConfig(
         """${'$'}{userInput}"""
     )
 
@@ -174,12 +174,12 @@ Please provide:
 }
 
 /**
- * Utility object for working with Roo Code support prompts.
+ * Utility object for working with Zoo Code support prompts.
  * Provides methods for creating and customizing prompts based on templates.
  * 
- * now organized under the Roo Code extension.
+ * now organized under the Zoo Code extension.
  */
-object RooCodeSupportPrompt {
+object ZooCodeSupportPrompt {
     /**
      * Generates formatted diagnostic text from a list of diagnostic items.
      *
@@ -203,7 +203,7 @@ object RooCodeSupportPrompt {
      * @param params Map of parameter values to replace placeholders
      * @return The processed prompt with placeholders replaced by actual values
      */
-    private fun createPrompt(template: String, params: RooCodePromptParams): String {
+    private fun createPrompt(template: String, params: ZooCodePromptParams): String {
         val pattern = Regex("""\$\{(.*?)}""")
         return pattern.replace(template) { matchResult ->
             val key = matchResult.groupValues[1]
@@ -233,8 +233,8 @@ object RooCodeSupportPrompt {
      * @param type The type of prompt to retrieve
      * @return The template string for the specified prompt type
      */
-    fun get(customSupportPrompts: Map<String, String>?, type: RooCodeSupportPromptType): String {
-        return customSupportPrompts?.get(type) ?: RooCodeSupportPromptConfigs.configs[type]?.template ?: ""
+    fun get(customSupportPrompts: Map<String, String>?, type: ZooCodeSupportPromptType): String {
+        return customSupportPrompts?.get(type) ?: ZooCodeSupportPromptConfigs.configs[type]?.template ?: ""
     }
 
     /**
@@ -245,7 +245,7 @@ object RooCodeSupportPrompt {
      * @param customSupportPrompts Optional custom prompt templates
      * @return The final prompt with all placeholders replaced
      */
-    fun create(type: RooCodeSupportPromptType, params: RooCodePromptParams, customSupportPrompts: Map<String, String>? = null): String {
+    fun create(type: ZooCodeSupportPromptType, params: ZooCodePromptParams, customSupportPrompts: Map<String, String>? = null): String {
         val template = get(customSupportPrompts, type)
         return createPrompt(template, params)
     }

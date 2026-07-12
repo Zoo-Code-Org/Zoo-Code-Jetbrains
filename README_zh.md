@@ -1,4 +1,4 @@
-# RunVSAgent
+# Zoo Code JetBrains
 
 [English](README.md) | 简体中文
 
@@ -8,11 +8,11 @@
 
 > **在其他 IDE 平台中运行基于 VSCode 的编码代理**
 
-RunVSAgent 是一个创新的跨平台开发工具，使开发者能够在 JetBrains IDEs（IntelliJ IDEA、WebStorm、PyCharm 等）或其他 IDE 平台中运行基于 VSCode 的编码代理和扩展。
+Zoo Code JetBrains 是一个创新的跨平台开发工具，使开发者能够在 JetBrains IDEs（IntelliJ IDEA、WebStorm、PyCharm 等）或其他 IDE 平台中运行基于 VSCode 的编码代理和扩展。
 
 ## 📸 截图
 
-![RunVSAgent 截图](docs/screenshot.jpg)
+![Zoo Code JetBrains 截图](docs/screenshot.jpg)
 
 ## 🚀 核心功能
 
@@ -21,14 +21,14 @@ RunVSAgent 是一个创新的跨平台开发工具，使开发者能够在 JetBr
 
 ## 🤖 支持的代理
 
-- **[Roo Code](https://roocode.com)**：具有智能代码生成和重构功能的高级 AI 驱动编码助手
+- **[Zoo Code](https://roocode.com)**：具有智能代码生成和重构功能的高级 AI 驱动编码助手
 - **[Cline](https://cline.bot)**: 一个就在你 IDE 里的自主编码代理，在你的许可下，能够创建/编辑文件、执行命令、使用浏览器等更多功能，并在每一步都征求你的确认。
 - **[Kilo Code](https://kilocode.ai)**: 开源的VSCode AI Agent
 
 ## 🔧 支持的 IDE
 
 ### JetBrains IDEs
-RunVSAgent 目前支持以下 JetBrains IDE 系列：
+Zoo Code JetBrains 目前支持以下 JetBrains IDE 系列：
 
 - **IntelliJ IDEA**（旗舰版和社区版）
 - **WebStorm** - JavaScript 和 TypeScript 开发
@@ -89,17 +89,17 @@ graph TB
 1. **在线安装**：
    - 打开您的 JetBrains IDE（IntelliJ IDEA、WebStorm、PyCharm 等）
    - 转到 `设置/首选项` → `插件`
-   - 在 `Marketplace` 标签页中搜索 "RunVSAgent"
+   - 在 `Marketplace` 标签页中搜索 "Zoo Code JetBrains"
    - 点击 `安装` 按钮
    - 在提示时重启您的 IDE
 
-2. **验证安装**：重启后，您应该在 IDE 的插件列表中看到 RunVSAgent 插件
+2. **验证安装**：重启后，您应该在 IDE 的插件列表中看到 Zoo Code JetBrains 插件
 
 ### 从 GitHub Releases 下载
 
 您可以从我们的 GitHub releases 页面下载预构建的插件：
 
-1. **下载插件**：访问 [GitHub Releases](https://github.com/wecode-ai/RunVSAgent/releases) 页面并下载最新的插件文件（`.zip` 格式）
+1. **下载插件**：访问 [GitHub Releases](https://github.com/wecode-ai/Zoo Code JetBrains/releases) 页面并下载最新的插件文件（`.zip` 格式）
 
 2. **在 JetBrains IDE 中安装**：
    - 打开您的 JetBrains IDE（IntelliJ IDEA、WebStorm、PyCharm 等）
@@ -108,7 +108,7 @@ graph TB
    - 选择下载的 `.zip` 文件
    - 在提示时重启您的 IDE
 
-3. **验证安装**：重启后，您应该在 IDE 的插件列表中看到 RunVSAgent 插件
+3. **验证安装**：重启后，您应该在 IDE 的插件列表中看到 Zoo Code JetBrains 插件
 
 ### 从源码构建
 
@@ -122,8 +122,8 @@ graph TB
 
 ```bash
 # 1. 克隆仓库
-git clone https://github.com/your-org/RunVSAgent.git
-cd RunVSAgent
+git clone https://github.com/your-org/Zoo Code JetBrains.git
+cd Zoo Code JetBrains
 
 # 2. 设置开发环境
 ./scripts/setup.sh
@@ -154,7 +154,7 @@ cd jetbrains_plugin
 ### 项目结构
 
 ```
-RunVSAgent/
+Zoo Code JetBrains/
 ├── extension_host/          # Node.js 扩展宿主
 │   ├── src/                # TypeScript 源代码
 │   │   ├── main.ts         # 主入口点
@@ -218,12 +218,12 @@ RunVSAgent/
 ### 维护者
 
 - **组织**：WeCode-AI 团队，微博公司
-- **联系方式**：[GitHub Issues](https://github.com/wecode-ai/RunVSAgent/issues)
+- **联系方式**：[GitHub Issues](https://github.com/wecode-ai/Zoo Code JetBrains/issues)
 - **网站**：[https://weibo.com](https://weibo.com)
 
 ---
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=wecode-ai/RunVSAgent&type=Date)](https://www.star-history.com/#wecode-ai/RunVSAgent&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=wecode-ai/Zoo Code JetBrains&type=Date)](https://www.star-history.com/#wecode-ai/Zoo Code JetBrains&Date)
 **由 WeCode-AI 团队用 ❤️ 制作**

@@ -1,6 +1,6 @@
-# Roo Code for JetBrains
+# Zoo Code for JetBrains
 
-Run Roo Code AI Assistant in JetBrains IDEs.
+Run Zoo Code AI Assistant in JetBrains IDEs.
 
 ## Prerequisites
 
@@ -16,7 +16,7 @@ Run Roo Code AI Assistant in JetBrains IDEs.
 
 ```bash
 # Clone the repository
-git clone https://github.com/RooCodeInc/Roo-Code-JetBrains.git
+git clone https://github.com/ZooCodeInc/Roo-Code-JetBrains.git
 cd Roo-Code-JetBrains
 
 # Run setup (initializes submodules, installs dependencies, applies patches)
@@ -34,9 +34,9 @@ The setup script handles:
 - Development environment setup
 
 The build script then:
-- Downloads the latest Roo Code extension from VSCode marketplace
+- Downloads the latest Zoo Code extension from VSCode marketplace
 - Builds the Extension Host runtime
-- Creates the JetBrains plugin with Roo Code integrated
+- Creates the JetBrains plugin with Zoo Code integrated
 - Outputs a ready-to-install plugin in the `dist/` directory
 
 ### Build Options
@@ -55,7 +55,6 @@ The build script then:
 ./scripts/build.sh --clean
 
 # Skip specific components
-./scripts/build.sh --skip-vscode    # Skip VSCode extension build
 ./scripts/build.sh --skip-host      # Skip Extension Host build
 ./scripts/build.sh --skip-idea      # Skip IDEA plugin build
 
@@ -69,7 +68,7 @@ The build script then:
 ### Build Output
 
 After building, you'll find:
-- `dist/RooCode-*.zip` - The JetBrains plugin file
+- `dist/ZooCode-*.zip` - The JetBrains plugin file
 - `dist/extension_host/` - The Extension Host runtime
 - `dist/debug-resources/` - Debug resources (debug mode only)
 - `dist/README.md` - Installation instructions
@@ -78,11 +77,11 @@ After building, you'll find:
 
 If you prefer to build components individually:
 
-### 1. Download and Prepare Roo Code Extension
+### 1. Download and Prepare Zoo Code Extension
 
 ```bash
 # The build script automatically downloads the latest version
-# Manual placement: extract VSIX to jetbrains_plugin/plugins/roo-code/extension/
+# Manual placement: extract VSIX to jetbrains_plugin/plugins/zoo-code/extension/
 ```
 
 ### 2. Build Extension Host
@@ -100,11 +99,11 @@ npm run build           # Development build
 ```bash
 cd jetbrains_plugin
 
-# Production build with Roo Code
-./gradlew -PdebugMode=release -PvscodePlugin=roo-code buildPlugin
+# Production build with Zoo Code
+./gradlew -PdebugMode=release -PvscodePlugin=zoo-code buildPlugin
 
 # Debug build
-./gradlew -PdebugMode=idea -PvscodePlugin=roo-code buildPlugin
+./gradlew -PdebugMode=idea -PvscodePlugin=zoo-code buildPlugin
 ```
 
 ## Development
@@ -113,7 +112,7 @@ cd jetbrains_plugin
 
 ```bash
 # Clone and setup
-git clone https://github.com/RooCodeInc/Roo-Code-JetBrains.git
+git clone https://github.com/ZooCodeInc/Roo-Code-JetBrains.git
 cd Roo-Code-JetBrains
 
 # Run setup (handles submodules, dependencies, patches)
@@ -170,13 +169,13 @@ cd jetbrains_plugin
 chmod +x gradlew
 ```
 
-### Network Errors Downloading Roo Code
+### Network Errors Downloading Zoo Code
 
 ```bash
 # Skip download and manually place extension
 ./scripts/build.sh --skip-download
-# Download VSIX manually from: https://marketplace.visualstudio.com/items?itemName=RooVeterinaryInc.roo-cline
-# Extract to: jetbrains_plugin/plugins/roo-code/extension/
+# Download VSIX manually from: https://marketplace.visualstudio.com/items?itemName=ZooCodeOrganization.zoo-code
+# Extract to: jetbrains_plugin/plugins/zoo-code/extension/
 ```
 
 ## Architecture
@@ -184,8 +183,8 @@ chmod +x gradlew
 The plugin consists of three components:
 
 1. **JetBrains Plugin** (Kotlin) - IDE integration
-2. **Extension Host** (Node.js) - Runs the Roo Code extension
-3. **Roo Code Extension** - The AI assistant
+2. **Extension Host** (Node.js) - Runs the Zoo Code extension
+3. **Zoo Code Extension** - The AI assistant
 
 Communication uses RPC over Unix sockets (macOS/Linux) or named pipes (Windows).
 
@@ -195,8 +194,7 @@ For CI/CD or automated builds:
 
 ```bash
 export BUILD_MODE=release
-export VSCODE_PLUGIN_NAME=roo-code
-export SKIP_VSCODE_BUILD=true
+export VSCODE_PLUGIN_NAME=zoo-code
 export SKIP_IDEA_BUILD=false
 ./scripts/build.sh
 ```

@@ -66,7 +66,7 @@ export class RPCManager {
         this.extensionManager = extensionManager;
         this.setupDefaultProtocols();
         this.setupExtensionRequiredProtocols();
-        this.setupRooCodeRequiredProtocols();
+        this.setupZooCodeRequiredProtocols();
     }
 
     public startInitialize(): void {
@@ -766,7 +766,7 @@ export class RPCManager {
         });
     }
     
-    public setupRooCodeRequiredProtocols(): void {
+    public setupZooCodeRequiredProtocols(): void {
         if (!this.rpcProtocol) {
             return;
         }

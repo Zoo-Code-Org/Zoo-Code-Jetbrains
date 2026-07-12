@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package com.roocode.jetbrains.extensions.plugin.roo
+package com.roocode.jetbrains.extensions.plugin.zoo
 
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
@@ -15,19 +15,19 @@ import com.roocode.jetbrains.extensions.ui.buttons.ButtonType
 import com.roocode.jetbrains.extensions.ui.buttons.ButtonConfiguration
 
 /**
- * Roo Code extension button provider.
- * Provides button configuration specific to Roo Code extension.
+ * Zoo Code extension button provider.
+ * Provides button configuration specific to Zoo Code extension.
  */
-class RooCodeButtonProvider : ExtensionButtonProvider {
+class ZooCodeButtonProvider : ExtensionButtonProvider {
     
-    override fun getExtensionId(): String = "roo-code"
+    override fun getExtensionId(): String = "zoo-code"
     
-    override fun getDisplayName(): String = "Roo Code"
+    override fun getDisplayName(): String = "Zoo Code"
     
     override fun getDescription(): String = "AI-powered code assistant with full capabilities"
     
     override fun isAvailable(project: Project): Boolean {
-        // Check if roo-code extension is available
+        // Check if zoo-code extension is available
         // This could include checking for extension files, dependencies, etc.
         return true
     }
@@ -69,15 +69,15 @@ class RooCodeButtonProvider : ExtensionButtonProvider {
     }
     
     override fun getButtonConfiguration(): ButtonConfiguration {
-        return RooCodeButtonConfiguration()
+        return ZooCodeButtonConfiguration()
     }
     
     /**
-     * Roo Code button configuration - shows buttons matching VS Code layout.
+     * Zoo Code button configuration - shows buttons matching VS Code layout.
      * Directly visible: New Task, Marketplace, Settings, Cloud
      * In overflow menu: History, Prompts, MCP Servers, Open in Editor
      */
-    private class RooCodeButtonConfiguration : ButtonConfiguration {
+    private class ZooCodeButtonConfiguration : ButtonConfiguration {
         override fun isButtonVisible(buttonType: ButtonType): Boolean {
             // All buttons are visible, but some are in overflow menu
             return true
@@ -104,7 +104,7 @@ class RooCodeButtonProvider : ExtensionButtonProvider {
      */
     class PlusButtonClickAction : AnAction() {
         private val logger: Logger = Logger.getInstance(PlusButtonClickAction::class.java)
-        private val commandId: String = "roo-cline.plusButtonClicked"
+        private val commandId: String = "zoo-code.plusButtonClicked"
 
         init {
             templatePresentation.icon = AllIcons.Actions.Edit
@@ -129,7 +129,7 @@ class RooCodeButtonProvider : ExtensionButtonProvider {
      */
     class PromptsButtonClickAction : AnAction() {
         private val logger: Logger = Logger.getInstance(PromptsButtonClickAction::class.java)
-        private val commandId: String = "roo-cline.promptsButtonClicked"
+        private val commandId: String = "zoo-code.promptsButtonClicked"
 
         init {
             templatePresentation.icon = AllIcons.Nodes.Folder
@@ -154,7 +154,7 @@ class RooCodeButtonProvider : ExtensionButtonProvider {
      */
     class MCPButtonClickAction : AnAction() {
         private val logger: Logger = Logger.getInstance(MCPButtonClickAction::class.java)
-        private val commandId: String = "roo-cline.mcpButtonClicked"
+        private val commandId: String = "zoo-code.mcpButtonClicked"
 
         init {
             templatePresentation.icon = AllIcons.Webreferences.Server
@@ -179,7 +179,7 @@ class RooCodeButtonProvider : ExtensionButtonProvider {
      */
     class HistoryButtonClickAction : AnAction() {
         private val logger: Logger = Logger.getInstance(HistoryButtonClickAction::class.java)
-        private val commandId: String = "roo-cline.historyButtonClicked"
+        private val commandId: String = "zoo-code.historyButtonClicked"
 
         init {
             templatePresentation.icon = AllIcons.Vcs.History
@@ -204,7 +204,7 @@ class RooCodeButtonProvider : ExtensionButtonProvider {
      */
     class SettingsButtonClickAction : AnAction() {
         private val logger: Logger = Logger.getInstance(SettingsButtonClickAction::class.java)
-        private val commandId: String = "roo-cline.settingsButtonClicked"
+        private val commandId: String = "zoo-code.settingsButtonClicked"
 
         init {
             templatePresentation.icon = AllIcons.General.Settings
@@ -229,7 +229,7 @@ class RooCodeButtonProvider : ExtensionButtonProvider {
      */
     class MarketplaceButtonClickAction : AnAction() {
         private val logger: Logger = Logger.getInstance(MarketplaceButtonClickAction::class.java)
-        private val commandId: String = "roo-cline.marketplaceButtonClicked"
+        private val commandId: String = "zoo-code.marketplaceButtonClicked"
 
         init {
             templatePresentation.icon = AllIcons.Javaee.WebModuleGroup
@@ -254,7 +254,7 @@ class RooCodeButtonProvider : ExtensionButtonProvider {
      */
     class CloudButtonClickAction : AnAction() {
         private val logger: Logger = Logger.getInstance(CloudButtonClickAction::class.java)
-        private val commandId: String = "roo-cline.cloudButtonClicked"
+        private val commandId: String = "zoo-code.cloudButtonClicked"
 
         init {
             templatePresentation.icon = AllIcons.Javaee.WebService
@@ -279,7 +279,7 @@ class RooCodeButtonProvider : ExtensionButtonProvider {
      */
     class OpenInEditorButtonClickAction : AnAction() {
         private val logger: Logger = Logger.getInstance(OpenInEditorButtonClickAction::class.java)
-        private val commandId: String = "roo-cline.popoutButtonClicked"
+        private val commandId: String = "zoo-code.popoutButtonClicked"
 
         init {
             templatePresentation.icon = AllIcons.Ide.External_link_arrow

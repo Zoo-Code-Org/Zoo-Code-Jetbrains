@@ -1,11 +1,11 @@
 package com.roocode.jetbrains.extensions.common
 
 /**
- * Extension type enum for Roo Code
+ * Extension type enum for Zoo Code
  * Defines different types of extensions that can be supported
  */
 enum class ExtensionType(val code: String, val displayName: String, val description: String) {
-    ROO_CODE("roo-code", "Roo Code", "AI-powered code assistant"),
+    ZOO_CODE("zoo-code", "Zoo Code", "AI-powered code assistant"),
     CLINE("cline", "Cline AI", "AI-powered coding assistant with advanced features"),
     KILO_CODE("kilo-code", "Kilo Code", "AI-powered code assistant with advanced capabilities"),
     ;
@@ -25,7 +25,7 @@ enum class ExtensionType(val code: String, val displayName: String, val descript
          * @return Default extension type
          */
         fun getDefault(): ExtensionType {
-            return ROO_CODE
+            return ZOO_CODE
         }
 
         /**

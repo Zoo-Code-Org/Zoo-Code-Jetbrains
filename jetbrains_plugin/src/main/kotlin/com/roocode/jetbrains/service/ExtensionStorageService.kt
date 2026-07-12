@@ -14,7 +14,7 @@ import com.google.gson.Gson
 @Service
 @State(
     name = "com.roocode.jetbrains.service.ExtensionStorageService",
-    storages = [Storage("roo-cline-extension-storage.xml")]
+    storages = [Storage("zoo-code-extension-storage.xml")]
 )
 class ExtensionStorageService() : PersistentStateComponent<ExtensionStorageService> {
     private val gson = Gson()

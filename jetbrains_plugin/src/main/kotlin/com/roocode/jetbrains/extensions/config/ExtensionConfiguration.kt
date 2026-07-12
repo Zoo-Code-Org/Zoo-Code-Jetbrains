@@ -14,7 +14,7 @@ import com.roocode.jetbrains.util.PluginConstants
 import com.roocode.jetbrains.util.ConfigFileUtils
 
 /**
- * Extension configuration manager for Roo Code
+ * Extension configuration manager for Zoo Code
  * Manages configuration for different extension types
  */
 @Service(Service.Level.PROJECT)
@@ -134,7 +134,7 @@ class ExtensionConfiguration(private val project: Project) {
 }
 
 /**
- * Extension configuration data class for Roo Code
+ * Extension configuration data class for Zoo Code
  */
 data class ExtensionConfig(
     val extensionType: ExtensionType,
@@ -155,10 +155,10 @@ data class ExtensionConfig(
          */
         fun getDefault(extensionType: ExtensionType): ExtensionConfig {
             return when (extensionType) {
-                ExtensionType.ROO_CODE -> ExtensionConfig(
+                ExtensionType.ZOO_CODE -> ExtensionConfig(
                     extensionType = extensionType,
-                    codeDir = "roo-code",
-                    displayName = "Roo Code",
+                    codeDir = "zoo-code",
+                    displayName = "Zoo Code",
                     description = "AI-powered code assistant",
                     publisher = "WeCode-AI",
                     version = "1.0.0",

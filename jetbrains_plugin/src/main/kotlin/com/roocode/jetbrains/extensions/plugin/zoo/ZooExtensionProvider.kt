@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package com.roocode.jetbrains.extensions.plugin.roo
+package com.roocode.jetbrains.extensions.plugin.zoo
 
 import com.intellij.openapi.project.Project
 import com.roocode.jetbrains.extensions.common.ExtensionType
@@ -16,13 +16,13 @@ import com.roocode.jetbrains.util.PluginResourceUtil
 import java.io.File
 
 /**
- * Roo Code extension provider implementation
+ * Zoo Code extension provider implementation
  */
-class RooExtensionProvider : ExtensionProvider {
+class ZooExtensionProvider : ExtensionProvider {
     
-    override fun getExtensionId(): String = "roo-code"
+    override fun getExtensionId(): String = "zoo-code"
     
-    override fun getDisplayName(): String = "Roo Code"
+    override fun getDisplayName(): String = "Zoo Code"
     
     override fun getDescription(): String = "AI-powered code assistant"
     
@@ -37,14 +37,14 @@ class RooExtensionProvider : ExtensionProvider {
     }
     
     override fun isAvailable(project: Project): Boolean {
-        // Always return true for Roo Code since it's the default extension
+        // Always return true for Zoo Code since it's the default extension
         // The actual files will be handled by the extension host
         return true
     }
     
     override fun getConfiguration(project: Project): ExtensionMetadata {
         val extensionConfig = ExtensionConfiguration.getInstance(project)
-        val config = extensionConfig.getConfig(ExtensionType.ROO_CODE);
+        val config = extensionConfig.getConfig(ExtensionType.ZOO_CODE);
 
         return object : ExtensionMetadata {
             override fun getCodeDir(): String = config.codeDir

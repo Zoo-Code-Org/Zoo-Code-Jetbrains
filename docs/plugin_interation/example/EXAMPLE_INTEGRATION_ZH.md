@@ -205,7 +205,7 @@ fun registerExtensionProvider(provider: ExtensionProvider) {
 
 ```45:75:jetbrains_plugin/src/main/kotlin/com/sina/weibo/agent/extensions/plugin/cline/ClineExtensionProvider.kt
 override fun isAvailable(project: Project): Boolean {
-    // Check if roo-code extension files exist
+    // Check if zoo-code extension files exist
     val extensionConfig = ExtensionConfiguration.getInstance(project)
     val config = extensionConfig.getConfig(ExtensionType.CLINE)
 

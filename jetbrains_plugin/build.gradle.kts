@@ -60,11 +60,11 @@ kotlin {
 val ext = project.extensions.extraProperties
 ext.set("debugMode", findProperty("debugMode") ?: "none")
 ext.set("debugResource", project.projectDir.resolve("../debug-resources").absolutePath)
-ext.set("vscodePlugin", findProperty("vscodePlugin") ?: "roo-code")
+ext.set("vscodePlugin", findProperty("vscodePlugin") ?: "zoo-code")
 
 // Strongly-typed providers (avoid stringly-typed ext lookups during configuration)
 val debugModeProp = providers.gradleProperty("debugMode").orElse("none")
-val vscodePluginProp = providers.gradleProperty("vscodePlugin").orElse("roo-code")
+val vscodePluginProp = providers.gradleProperty("vscodePlugin").orElse("zoo-code")
 
 fun Sync.prepareSandbox() {
     // Read once during configuration; values also wired as task inputs below
@@ -236,7 +236,7 @@ dependencies {
 // Configure Gradle IntelliJ Plugin
 // Read more: https://plugins.jetbrains.com/docs/intellij/tools-gradle-intellij-plugin.html
 intellij {
-    pluginName.set("RooCode")
+    pluginName.set("ZooCode")
     version.set(properties("platformVersion"))
     type.set(properties("platformType"))
 

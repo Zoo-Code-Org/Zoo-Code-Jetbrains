@@ -45,7 +45,7 @@ import com.intellij.util.ui.JBFont
 import com.intellij.util.ui.JBUI
 import com.roocode.jetbrains.util.ConfigFileUtils
 
-class RunVSAgentToolWindowFactory : ToolWindowFactory {
+class ZooCodeJetBrainsToolWindowFactory : ToolWindowFactory {
 
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
         // Initialize plugin service
@@ -64,10 +64,10 @@ class RunVSAgentToolWindowFactory : ToolWindowFactory {
         }
 
         toolWindow.setTitleActions(titleActions)
-        toolWindow.stripeTitle = "Roo Code"
+        toolWindow.stripeTitle = "Zoo Code"
 
         // webview panel
-        val toolWindowContent = RunVSAgentToolWindowContent(project, toolWindow)
+        val toolWindowContent = ZooCodeJetBrainsToolWindowContent(project, toolWindow)
         val contentFactory = ContentFactory.getInstance()
         val content = contentFactory.createContent(
             toolWindowContent.content,
@@ -77,11 +77,11 @@ class RunVSAgentToolWindowFactory : ToolWindowFactory {
         toolWindow.contentManager.addContent(content)
     }
 
-    private class RunVSAgentToolWindowContent(
+    private class ZooCodeJetBrainsToolWindowContent(
         private val project: Project,
         private val toolWindow: ToolWindow
     ) : WebViewCreationCallback {
-        private val logger = Logger.getInstance(RunVSAgentToolWindowContent::class.java)
+        private val logger = Logger.getInstance(ZooCodeJetBrainsToolWindowContent::class.java)
 
         // Get WebViewManager instance
         private val webViewManager = project.getService(WebViewManager::class.java)
@@ -151,7 +151,7 @@ class RunVSAgentToolWindowFactory : ToolWindowFactory {
             return buildString {
                 append("<html><body style='text-align: center; padding: 20px;'>")
                 append("<div style='margin: 0 auto; max-width: 600px;'>")
-                append("<h2 style='margin-bottom: 20px;'>Roo Code is initializing...</h2>")
+                append("<h2 style='margin-bottom: 20px;'>Zoo Code is initializing...</h2>")
                 append("<div style='text-align: left; display: inline-block;'>")
                 append("<h3 style='margin-top: 30px;'>System Information</h3>")
                 append("<ul style='padding-left: 20px;'>")
@@ -220,7 +220,7 @@ class RunVSAgentToolWindowFactory : ToolWindowFactory {
             val isLinuxArm = osName.lowercase().contains("linux") && (osArch.lowercase().contains("aarch64") || osArch.lowercase().contains("arm"))
 
             return buildString {
-                append("Roo Code System Information\n")
+                append("Zoo Code System Information\n")
                 append("===========================\n\n")
                 append("Status: Initializing...\n\n")
                 append("System Details:\n")
@@ -253,7 +253,7 @@ class RunVSAgentToolWindowFactory : ToolWindowFactory {
         // Known Issues button - use standard IDE button styling
         private val knownIssuesButton = JButton("Known Issues").apply {
             addActionListener {
-                BrowserUtil.browse("https://github.com/RooCodeInc/Roo-Code-JetBrains/blob/main/docs/KNOWN_ISSUES.md")
+                BrowserUtil.browse("https://github.com/ZooCodeInc/Roo-Code-JetBrains/blob/main/docs/KNOWN_ISSUES.md")
             }
         }
 
@@ -400,7 +400,7 @@ class RunVSAgentToolWindowFactory : ToolWindowFactory {
                 }
             }.apply {
                 isDaemon = true
-                name = "RunVSAgent-ConfigMonitor-UI"
+                name = "Zoo Code JetBrains-ConfigMonitor-UI"
                 start()
             }
         }
@@ -894,7 +894,7 @@ class RunVSAgentToolWindowFactory : ToolWindowFactory {
                     
                     // Register project-level resource disposal
                     com.intellij.openapi.util.Disposer.register(project, com.intellij.openapi.Disposable {
-                        logger.info("Disposing RunVSAgent plugin for project: ${project.name}")
+                        logger.info("Disposing Zoo Code JetBrains plugin for project: ${project.name}")
                         pluginService.dispose()
                         extensionManager.dispose()
                         SystemObjectProvider.dispose()
@@ -953,7 +953,7 @@ class RunVSAgentToolWindowFactory : ToolWindowFactory {
             
             contentPanel.removeAll()
             
-            // Always show system info panel (Roo Code is always configured)
+            // Always show system info panel (Zoo Code is always configured)
             
             val initPanel = JPanel(BorderLayout()).apply {
                 border = BorderFactory.createEmptyBorder(20, 20, 20, 20)
@@ -961,7 +961,7 @@ class RunVSAgentToolWindowFactory : ToolWindowFactory {
                 add(buttonPanel, BorderLayout.SOUTH)
             }
             contentPanel.add(initPanel, BorderLayout.CENTER)
-            logger.info("Showing system info panel - Roo Code auto-configured")
+            logger.info("Showing system info panel - Zoo Code auto-configured")
             
             contentPanel.revalidate()
             contentPanel.repaint()
@@ -977,10 +977,10 @@ class RunVSAgentToolWindowFactory : ToolWindowFactory {
                 
                 1. Create configuration file in user home directory: ${PluginConstants.ConfigFiles.getMainConfigPath()}
                 2. Add the following content:
-                   ${PluginConstants.ConfigFiles.EXTENSION_TYPE_KEY}=roo-code
+                   ${PluginConstants.ConfigFiles.EXTENSION_TYPE_KEY}=zoo-code
                    
                 3. Supported plugin types:
-                   - roo-code: Roo Code AI Assistant
+                   - zoo-code: Zoo Code AI Assistant
                    - cline: Cline AI Assistant
                    - custom: Custom Plugin
                    
@@ -1002,7 +1002,7 @@ class RunVSAgentToolWindowFactory : ToolWindowFactory {
          */
         private fun showDebugInfo() {
             val debugText = """
-                Roo Code Debug Information
+                Zoo Code Debug Information
                 ==========================
                 
                 🚀 Plugin Status: ${if (configManager.isConfigurationLoaded() && configManager.isConfigurationValid()) "Loaded and Valid" else "Not Loaded or Invalid"}
