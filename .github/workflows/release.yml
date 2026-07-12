@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   release:
-    name: Release tagged mainline commit
+    name: Release tagged main commit
     runs-on: ubuntu-latest
 
     steps:
@@ -19,20 +19,20 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Check whether the tag is on mainline
+      - name: Check whether the tag is on main
         id: tag-check
         env:
           TAG_NAME: ${{ github.ref_name }}
         shell: bash
         run: |
-          git fetch --no-tags origin mainline
+          git fetch --no-tags origin main
           tag_commit="$(git rev-list -n 1 "$TAG_NAME")"
 
-          if git merge-base --is-ancestor "$tag_commit" origin/mainline; then
+          if git merge-base --is-ancestor "$tag_commit" origin/main; then
             echo "on_mainline=true" >> "$GITHUB_OUTPUT"
           else
             echo "on_mainline=false" >> "$GITHUB_OUTPUT"
-            echo "Tag $TAG_NAME does not point to a commit on mainline; skipping release."
+            echo "Tag $TAG_NAME does not point to a commit on main; skipping release."
           fi
 
       - name: Create GitHub release
