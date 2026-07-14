@@ -34,8 +34,7 @@ class ZooCodeButtonProvider : ExtensionButtonProvider {
     
     override fun getButtons(project: Project): List<AnAction> {
         // Note: project parameter kept for future extensibility
-        // Order matches VS Code: New Task, Marketplace, Settings (visible)
-        // History, Prompts, MCP, Open in Editor (overflow menu)
+        // Order matches the top bar: New Task, Marketplace, Settings, Task History
         return listOf(
             PlusButtonClickAction(),
             MarketplaceButtonClickAction(),
@@ -52,18 +51,14 @@ class ZooCodeButtonProvider : ExtensionButtonProvider {
         return listOf(
             PlusButtonClickAction(),
             MarketplaceButtonClickAction(),
-            SettingsButtonClickAction()
+            SettingsButtonClickAction(),
+            HistoryButtonClickAction()
         )
     }
     
     override fun getOverflowButtons(project: Project): List<AnAction> {
-        // Remaining buttons go into the overflow menu
-        return listOf(
-            HistoryButtonClickAction(),
-            PromptsButtonClickAction(),
-            MCPButtonClickAction(),
-            OpenInEditorButtonClickAction()
-        )
+        // The top bar intentionally has no dropdown menu.
+        return emptyList()
     }
     
     override fun getButtonConfiguration(): ButtonConfiguration {
@@ -71,14 +66,12 @@ class ZooCodeButtonProvider : ExtensionButtonProvider {
     }
     
     /**
-     * Zoo Code button configuration - shows buttons matching VS Code layout.
-     * Directly visible: New Task, Marketplace, Settings
-     * In overflow menu: History, Prompts, MCP Servers, Open in Editor
+     * Zoo Code button configuration for directly visible top-bar actions.
+     * Directly visible: New Task, Marketplace, Settings, Task History
      */
     private class ZooCodeButtonConfiguration : ButtonConfiguration {
         override fun isButtonVisible(buttonType: ButtonType): Boolean {
-            // All buttons are visible, but some are in overflow menu
-            return true
+            return buttonType in getVisibleButtons()
         }
         
         override fun getVisibleButtons(): List<ButtonType> {
@@ -87,10 +80,7 @@ class ZooCodeButtonProvider : ExtensionButtonProvider {
                 ButtonType.PLUS,          // New Task
                 ButtonType.MARKETPLACE,   // Marketplace
                 ButtonType.SETTINGS,      // Settings
-                ButtonType.HISTORY,       // History (overflow)
-                ButtonType.PROMPTS,       // Prompts (overflow)
-                ButtonType.MCP,          // MCP Servers (overflow)
-                ButtonType.OPEN_IN_EDITOR // Open in Editor (overflow)
+                ButtonType.HISTORY        // Task History
             )
         }
     }
@@ -180,8 +170,8 @@ class ZooCodeButtonProvider : ExtensionButtonProvider {
 
         init {
             templatePresentation.icon = AllIcons.Vcs.History
-            templatePresentation.text = "History"
-            templatePresentation.description = "History"
+            templatePresentation.text = "Task History"
+            templatePresentation.description = "View task history"
         }
 
         /**
