@@ -1,4 +1,3 @@
-
 #!/bin/bash
 
 # Build script with pre-packaged Zoo Code extension
