@@ -42,11 +42,26 @@ class TabStateManager(var project: Project) {
         // Generate new group ID
         val groupId = nextGroupId++
 
+        // IEditorTabGroupDto.viewColumn uses VS Code's zero-based EditorGroupColumn.
+        // ACTIVE_GROUP (-1) and SIDE_GROUP (-2) are valid only while selecting a
+        // target group; exposing either through the DTO makes ViewColumn.to throw
+        // "invalid 'EditorGroupColumn'" when an extension reads TabGroup.viewColumn.
+        val resolvedViewColumn = when (viewColumn) {
+            EditorGroupColumn.active.value -> state.groups.values
+                .firstOrNull { it.isActive }
+                ?.viewColumn
+                ?: 0
+            EditorGroupColumn.beside.value -> (state.groups.values
+                .maxOfOrNull { it.viewColumn }
+                ?: -1) + 1
+            else -> viewColumn.coerceAtLeast(0)
+        }
+
         // Create tab group
         val group = EditorTabGroupDto(
             groupId = groupId,
             isActive = isActive,
-            viewColumn = viewColumn,
+            viewColumn = resolvedViewColumn,
             tabs = emptyList()
         )
         state.groups[groupId] = group
