@@ -15,6 +15,7 @@ import org.zoocode.jetbrains.ipc.NodeSocket
 import org.zoocode.jetbrains.ipc.PersistentProtocol
 import org.zoocode.jetbrains.ipc.proxy.ResponsiveState
 import org.zoocode.jetbrains.util.PluginConstants
+import org.zoocode.jetbrains.util.PluginInfo
 import org.zoocode.jetbrains.util.PluginResourceUtil
 import org.zoocode.jetbrains.util.URI
 import org.zoocode.jetbrains.workspace.WorkspaceFileChangeManager
@@ -25,8 +26,6 @@ import kotlinx.coroutines.cancel
 import java.net.Socket
 import java.nio.channels.SocketChannel
 import java.nio.file.Paths
-import com.intellij.ide.plugins.PluginManagerCore
-import com.intellij.openapi.extensions.PluginId
 import org.zoocode.jetbrains.extensions.core.ExtensionManager as GlobalExtensionManager
 import org.zoocode.jetbrains.extensions.config.ExtensionProvider
 import org.zoocode.jetbrains.extensions.config.ExtensionMetadata
@@ -358,8 +357,8 @@ class ExtensionHostManager : Disposable {
         val version = applicationInfo.shortVersion ?: "1.0.0"
         LOG.info("Get IDE version: $version")
 
-        val pluginVersion = PluginManagerCore.getPlugin(PluginId.getId(PluginConstants.PLUGIN_ID))?.version
-        if (pluginVersion != null) {
+        val pluginVersion = PluginInfo.version
+        if (pluginVersion != "unknown") {
             val fullVersion = "$version, $pluginVersion"
             LOG.info("Get IDE version and plugin version: $fullVersion")
             return fullVersion
@@ -442,4 +441,4 @@ class ExtensionHostManager : Disposable {
 
         LOG.info("ExtensionHostManager disposed")
     }
-} 
+}

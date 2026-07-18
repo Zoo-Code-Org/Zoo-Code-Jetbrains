@@ -12,8 +12,6 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.ui.content.ContentFactory
-import com.intellij.ide.plugins.PluginManagerCore
-import com.intellij.openapi.extensions.PluginId
 import com.intellij.ui.jcef.JBCefApp
 import com.intellij.openapi.application.ApplicationInfo
 import com.intellij.ide.BrowserUtil
@@ -26,6 +24,7 @@ import org.zoocode.jetbrains.webview.WebViewCreationCallback
 import org.zoocode.jetbrains.webview.WebViewInstance
 import org.zoocode.jetbrains.webview.WebViewManager
 import org.zoocode.jetbrains.util.PluginConstants
+import org.zoocode.jetbrains.util.PluginInfo as PluginRuntimeInfo
 import org.zoocode.jetbrains.extensions.core.ExtensionConfigurationManager
 import org.zoocode.jetbrains.extensions.core.ExtensionManager
 import org.zoocode.jetbrains.plugin.SystemObjectProvider
@@ -136,8 +135,7 @@ class ZooCodeJetBrainsToolWindowFactory : ToolWindowFactory {
          */
         private fun createSystemInfoText(): String {
             val appInfo = ApplicationInfo.getInstance()
-            val plugin = PluginManagerCore.getPlugin(PluginId.getId(PluginConstants.PLUGIN_ID))
-            val pluginVersion = plugin?.version ?: "unknown"
+            val pluginVersion = PluginRuntimeInfo.version
             val osName = System.getProperty("os.name")
             val osVersion = System.getProperty("os.version")
             val osArch = System.getProperty("os.arch")
@@ -208,8 +206,7 @@ class ZooCodeJetBrainsToolWindowFactory : ToolWindowFactory {
          */
         private fun createSystemInfoPlainText(): String {
             val appInfo = ApplicationInfo.getInstance()
-            val plugin = PluginManagerCore.getPlugin(PluginId.getId(PluginConstants.PLUGIN_ID))
-            val pluginVersion = plugin?.version ?: "unknown"
+            val pluginVersion = PluginRuntimeInfo.version
             val osName = System.getProperty("os.name")
             val osVersion = System.getProperty("os.version")
             val osArch = System.getProperty("os.arch")

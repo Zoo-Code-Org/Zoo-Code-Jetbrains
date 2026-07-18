@@ -4,15 +4,10 @@
 
 package org.zoocode.jetbrains.util
 
-import com.intellij.ide.plugins.IdeaPluginDescriptor
-import com.intellij.ide.plugins.PluginManagerCore
 import com.intellij.openapi.diagnostic.Logger
-import com.intellij.openapi.extensions.PluginId
 import org.zoocode.jetbrains.plugin.DEBUG_MODE
-import org.zoocode.jetbrains.plugin.WecoderPlugin
 import org.zoocode.jetbrains.plugin.WecoderPluginService
 import java.io.File
-import java.nio.file.Files
 import java.nio.file.Paths
 import kotlin.io.path.pathString
 
@@ -36,18 +31,19 @@ object PluginResourceUtil {
                 // Debug mode: directly use plugin service to get resource path
                 return WecoderPluginService.getDebugResource() + "/$resourceName"
             }
-            val plugin = PluginManagerCore.getPlugin(PluginId.getId(pluginId))
-                ?: throw IllegalStateException("Cannot find plugin: $pluginId")
+            require(pluginId == PluginConstants.PLUGIN_ID) { "Cannot access resources of another plugin: $pluginId" }
+            val pluginPath = PluginInfo.installationPath
+                ?: throw IllegalStateException("Cannot determine the Zoo Code plugin path")
 
             // Determine whether it is development mode or production mode
-            val isDevMode = checkDevMode(plugin)
+            val isDevMode = checkDevMode()
 
             if (isDevMode) {
                 // Development mode: load from classpath or project resource directory
-                loadDevResource(resourceName, plugin)
+                loadDevResource(resourceName, pluginPath)
             } else {
                 // Production mode: load from plugin JAR or installation directory
-                loadProdResource(resourceName, plugin)
+                loadProdResource(resourceName, pluginPath)
             }
         } catch (e: Exception) {
             LOG.error("Failed to get plugin resource path: $resourceName", e)
@@ -58,17 +54,17 @@ object PluginResourceUtil {
     /**
      * Load resources in development mode
      */
-    private fun loadDevResource(resourceName: String, plugin: IdeaPluginDescriptor): String {
-        val resourcePath = Paths.get(plugin.pluginPath.parent.parent.parent.parent.parent.pathString, "debug-resources/$resourceName")
+    private fun loadDevResource(resourceName: String, pluginPath: java.nio.file.Path): String {
+        val resourcePath = Paths.get(pluginPath.parent.parent.parent.parent.parent.pathString, "debug-resources/$resourceName")
         return resourcePath.toString()
     }
 
     /**
      * Load resources in production mode
      */
-    private fun loadProdResource(resourceName: String, plugin: IdeaPluginDescriptor): String? {
+    private fun loadProdResource(resourceName: String, pluginPath: java.nio.file.Path): String? {
         // Load from plugin installation directory (compatible with old version)
-        val pluginDir = plugin.pluginPath.toFile()
+        val pluginDir = pluginPath.toFile()
         val resourceDir = pluginDir.resolve(resourceName)
         if (resourceDir.exists()) {
             return resourceDir.absolutePath
@@ -79,7 +75,7 @@ object PluginResourceUtil {
     /**
      * Check whether it is in development mode
      */
-    private fun checkDevMode(plugin: IdeaPluginDescriptor): Boolean {
+    private fun checkDevMode(): Boolean {
         return try {
             WecoderPluginService.getDebugMode() != DEBUG_MODE.NONE
         }catch (e: Exception){
@@ -112,4 +108,4 @@ object PluginResourceUtil {
             null
         }
     }
-} 
+}

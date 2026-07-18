@@ -16,17 +16,25 @@ import org.cef.misc.StringRef
 import org.cef.network.CefRequest
 import org.cef.network.CefResponse
 import java.io.File
+import java.lang.reflect.InvocationHandler
+import java.lang.reflect.Method
+import java.lang.reflect.Proxy
 
 
 class LocalResHandler(val resourcePath:String , val request: CefRequest?) : CefResourceRequestHandlerAdapter() {
 
     override fun getResourceHandler(browser: CefBrowser?, frame: CefFrame?, request: CefRequest?): CefResourceHandler {
-        return LocalCefResHandle(resourcePath,request)
+        val handler = LocalCefResHandle(resourcePath, request)
+        return Proxy.newProxyInstance(
+            CefResourceHandler::class.java.classLoader,
+            arrayOf(CefResourceHandler::class.java),
+            handler
+        ) as CefResourceHandler
     }
 
 }
 
-class LocalCefResHandle(val resourceBasePath: String, val request: CefRequest?) : CefResourceHandler{
+class LocalCefResHandle(val resourceBasePath: String, val request: CefRequest?) : InvocationHandler {
     private val logger = Logger.getInstance(LocalCefResHandle::class.java)
 
     private var file: File? = null
@@ -72,7 +80,7 @@ class LocalCefResHandle(val resourceBasePath: String, val request: CefRequest?) 
     }
 
 
-    override fun processRequest(p0: CefRequest?, callback: CefCallback?): Boolean {
+    fun processRequest(p0: CefRequest?, callback: CefCallback?): Boolean {
         callback?.Continue()
         return true
     }
@@ -99,10 +107,11 @@ class LocalCefResHandle(val resourceBasePath: String, val request: CefRequest?) 
         }
     }
 
-    override fun getResponseHeaders(resp: CefResponse?, p1: IntRef?, p2: StringRef?) {
+    fun getResponseHeaders(resp: CefResponse?, p1: IntRef?, p2: StringRef?) {
         if (fileContent == null) {
             resp?.status = 404
             resp?.statusText = "Not Found"
+            p1?.set(0)
             return
         }
 
@@ -110,15 +119,35 @@ class LocalCefResHandle(val resourceBasePath: String, val request: CefRequest?) 
         resp?.statusText = "OK"
         resp?.mimeType = getMimeTypeForFile(file?.name ?: "index.html")
         resp?.setHeaderByName("Content-Length", fileContent!!.size.toString(), true)
+        p1?.set(fileContent!!.size)
     }
 
-    override fun readResponse(dataOut: ByteArray?, bytesToRead: Int, bytesRead: IntRef?, callback: CefCallback?): Boolean {
+    fun readResponse(dataOut: ByteArray?, bytesToRead: Int, bytesRead: IntRef?, callback: CefCallback?): Boolean {
+        return readContent(dataOut, bytesToRead, bytesRead)
+    }
+
+    private fun skipContent(bytesToSkip: Long, bytesSkipped: Any?): Boolean {
+        val content = fileContent
+        if (content == null || bytesSkipped == null || bytesToSkip < 0) {
+            setRefValue(bytesSkipped, -2L)
+            return false
+        }
+
+        val skipped = minOf(bytesToSkip, (content.size - offset).coerceAtLeast(0).toLong())
+        offset += skipped.toInt()
+        setRefValue(bytesSkipped, skipped)
+        return skipped > 0
+    }
+
+    private fun readContent(dataOut: ByteArray?, bytesToRead: Int, bytesRead: IntRef?): Boolean {
         if (fileContent == null || dataOut == null || bytesRead == null) {
+            bytesRead?.set(0)
             return false
         }
 
         val remaining = fileContent!!.size - offset
         if (remaining <= 0) {
+            bytesRead.set(0)
             return false
         }
 
@@ -127,13 +156,59 @@ class LocalCefResHandle(val resourceBasePath: String, val request: CefRequest?) 
         offset += readSize
         bytesRead.set(readSize)
 
-        return offset <= fileContent!!.size
+        return true
     }
 
-    override fun cancel() {
+    fun cancel() {
         file = null
         fileContent = null
         offset = 0
+    }
+
+    override fun invoke(proxy: Any?, method: Method, args: Array<out Any?>?): Any? {
+        val values = args ?: emptyArray()
+        return when (method.name) {
+            "processRequest" -> processRequest(values.getOrNull(0) as? CefRequest, values.getOrNull(1) as? CefCallback)
+            "open" -> {
+                setRefValue(values.getOrNull(1), true)
+                true
+            }
+            "getResponseHeaders" -> {
+                getResponseHeaders(
+                    values.getOrNull(0) as? CefResponse,
+                    values.getOrNull(1) as? IntRef,
+                    values.getOrNull(2) as? StringRef
+                )
+                null
+            }
+            "readResponse", "read" -> readContent(
+                values.getOrNull(0) as? ByteArray,
+                values.getOrNull(1) as? Int ?: 0,
+                values.getOrNull(2) as? IntRef
+            )
+            "skip" -> skipContent(values.getOrNull(0) as? Long ?: 0L, values.getOrNull(1))
+            "cancel" -> {
+                cancel()
+                null
+            }
+            "toString" -> "LocalCefResHandle($resourceBasePath)"
+            "hashCode" -> System.identityHashCode(proxy)
+            "equals" -> proxy === values.getOrNull(0)
+            else -> throw UnsupportedOperationException("Unsupported CefResourceHandler method: ${method.name}")
+        }
+    }
+
+    private fun setRefValue(ref: Any?, value: Any) {
+        if (ref == null) return
+        val setter = ref.javaClass.methods.firstOrNull { it.name == "set" && it.parameterCount == 1 } ?: return
+        val parameterType = setter.parameterTypes[0]
+        val convertedValue = when (parameterType) {
+            java.lang.Boolean.TYPE, java.lang.Boolean::class.java -> value as Boolean
+            java.lang.Integer.TYPE, java.lang.Integer::class.java -> (value as Number).toInt()
+            java.lang.Long.TYPE, java.lang.Long::class.java -> (value as Number).toLong()
+            else -> value
+        }
+        setter.invoke(ref, convertedValue)
     }
 
 }

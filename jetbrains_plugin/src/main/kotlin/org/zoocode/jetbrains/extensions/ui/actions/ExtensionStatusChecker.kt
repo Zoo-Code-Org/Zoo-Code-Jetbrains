@@ -19,11 +19,9 @@ import org.zoocode.jetbrains.core.PluginContext
 import org.zoocode.jetbrains.core.ServiceProxyRegistry
 import org.zoocode.jetbrains.util.ProxyConfigUtil
 import org.zoocode.jetbrains.webview.WebViewManager
-import com.intellij.ide.plugins.PluginManagerCore
-import com.intellij.openapi.extensions.PluginId
 import com.intellij.ui.jcef.JBCefApp
 import com.intellij.openapi.application.ApplicationInfo
-import org.zoocode.jetbrains.util.PluginConstants
+import org.zoocode.jetbrains.util.PluginInfo
 
 /**
  * Action to check extension status and diagnose issues
@@ -156,8 +154,7 @@ class ExtensionStatusChecker : AnAction("Check Extension Status") {
     private fun addSystemInformation(sb: StringBuilder) {
         try {
             val appInfo = ApplicationInfo.getInstance()
-            val plugin = PluginManagerCore.getPlugin(PluginId.getId(PluginConstants.PLUGIN_ID))
-            val pluginVersion = plugin?.version ?: "unknown"
+            val pluginVersion = PluginInfo.version
             val osName = System.getProperty("os.name")
             val osVersion = System.getProperty("os.version")
             val osArch = System.getProperty("os.arch")

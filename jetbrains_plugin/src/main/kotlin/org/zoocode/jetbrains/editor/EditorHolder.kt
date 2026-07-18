@@ -14,7 +14,6 @@ import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileEditor.FileEditor
 import com.intellij.openapi.fileEditor.TextEditor
 import com.intellij.openapi.vfs.LocalFileSystem
-import com.intellij.testFramework.utils.editor.saveToDisk
 import kotlinx.coroutines.*
 import java.io.File
 import java.lang.ref.WeakReference
@@ -213,9 +212,7 @@ class EditorHolder(
 
         suspend fun save(): Boolean {
             ApplicationManager.getApplication().invokeLater {
-                ApplicationManager.getApplication().runWriteAction {
-                    editorDocument?.saveToDisk()
-                }
+                editorDocument?.let { FileDocumentManager.getInstance().saveDocument(it) }
             }
             val newDoc = ModelAddedData(
                 uri = document.uri,

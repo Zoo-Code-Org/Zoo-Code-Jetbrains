@@ -22,8 +22,6 @@ import java.util.concurrent.CompletableFuture
 import kotlinx.coroutines.*
 import java.util.Properties
 import java.io.InputStream
-import com.intellij.ide.plugins.PluginManagerCore
-import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.util.SystemInfo
 import com.intellij.ui.jcef.JBCefApp
 import com.intellij.openapi.application.ApplicationInfo
@@ -32,6 +30,7 @@ import org.zoocode.jetbrains.extensions.core.ExtensionConfigurationManager
 import org.zoocode.jetbrains.extensions.core.ExtensionManager
 import org.zoocode.jetbrains.util.ExtensionUtils
 import org.zoocode.jetbrains.util.PluginConstants
+import org.zoocode.jetbrains.util.PluginInfo
 import org.zoocode.jetbrains.util.PluginResourceUtil
 import java.io.File
 
@@ -62,8 +61,7 @@ class WecoderPlugin : StartupActivity.DumbAware {
 
     override fun runActivity(project: Project) {
         val appInfo = ApplicationInfo.getInstance()
-        val plugin = PluginManagerCore.getPlugin(PluginId.getId(PluginConstants.PLUGIN_ID))
-        val pluginVersion = plugin?.version ?: "unknown"
+        val pluginVersion = PluginInfo.version
         val osName = System.getProperty("os.name")
         val osVersion = System.getProperty("os.version")
         val osArch = System.getProperty("os.arch")

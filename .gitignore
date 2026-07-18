@@ -58,3 +58,4 @@ deps/vsix/plugin/*
 # Roo build artifacts
 .zoo-build/
 dist-with-roo/
+plans/
