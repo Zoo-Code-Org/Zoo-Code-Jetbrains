@@ -12,6 +12,9 @@ This directory contains the build and maintenance scripts for the Zoo Code JetBr
 # Build the project
 ./scripts/build.sh
 
+# Create a GitHub release from an existing tag and upload the built ZIP
+./scripts/release.sh v3.71.0
+
 # Run tests
 ./scripts/test.sh
 
@@ -44,6 +47,7 @@ This directory contains the build and maintenance scripts for the Zoo Code JetBr
 | `run.ps1` | Main entry point (Windows) | PowerShell wrapper for Windows users |
 | `setup.sh` | Environment setup | Initialize development environment |
 | `build.sh` | Build system | Build VSCode extension and IDEA plugin |
+| `release.sh` | GitHub release | Create a release and upload an already-built plugin ZIP |
 | `clean.sh` | Cleanup utility | Clean build artifacts and temporary files |
 | `test.sh` | Test runner | Run tests and validations |
 
@@ -99,6 +103,24 @@ This directory contains the build and maintenance scripts for the Zoo Code JetBr
 
 # Force clean without confirmation
 ./scripts/clean.sh --force all
+```
+
+### Manual GitHub Release
+
+Build the release plugin, push its tag, and create the GitHub release:
+
+```bash
+./scripts/build.sh --mode release --clean
+git push origin v3.71.0
+./scripts/release.sh v3.71.0
+```
+
+The release script requires the GitHub CLI (`gh`) to be authenticated. It uses
+the single `dist/ZooCode-*.zip` artifact by default. Pass an explicit artifact
+path if the directory contains multiple builds:
+
+```bash
+./scripts/release.sh v3.71.0 dist/ZooCode-3.71.0.zip
 ```
 
 ## Build Modes
