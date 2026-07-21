@@ -12,16 +12,10 @@ import com.intellij.openapi.progress.Task
 import com.intellij.openapi.application.PathManager
 import com.intellij.openapi.util.SystemInfo
 import com.intellij.util.io.Decompressor
-import okhttp3.Authenticator
-import okhttp3.Credentials
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.Response
-import okhttp3.Route
 import java.io.File
 import java.io.IOException
-import java.net.HttpURLConnection
-import java.net.InetSocketAddress
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.ReentrantLock
@@ -52,40 +46,9 @@ object NodeRuntimeManager {
     private val httpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
-        .proxyAuthenticator(IdeProxyAuthenticator)
         .build()
 
     private val downloadLock = ReentrantLock()
-
-    /**
-     * Proxy authenticator that resolves credentials through java.net.Authenticator,
-     * which the IDE populates with its configured proxy credentials
-     */
-    private object IdeProxyAuthenticator : Authenticator {
-        override fun authenticate(route: Route?, response: Response): Request? {
-            if (response.code != HttpURLConnection.HTTP_PROXY_AUTH) {
-                return null
-            }
-            val proxyAddress = route?.proxy?.address() as? InetSocketAddress ?: return null
-            val passwordAuthentication = java.net.Authenticator.requestPasswordAuthentication(
-                proxyAddress.hostString,
-                proxyAddress.address,
-                proxyAddress.port,
-                "http",
-                null,
-                "http",
-                response.request.url.toUrl(),
-                java.net.Authenticator.RequestorType.PROXY
-            ) ?: return null
-            val credential = Credentials.basic(
-                passwordAuthentication.userName,
-                String(passwordAuthentication.password)
-            )
-            return response.request.newBuilder()
-                .header("Proxy-Authorization", credential)
-                .build()
-        }
-    }
 
     /**
      * Platform-specific Node.js distribution descriptor
