@@ -81,7 +81,8 @@ The plugin targets IntelliJ Platform build **233** (JetBrains 2023.3) or newer. 
 - A supported JetBrains IDE based on IntelliJ Platform build 233 or newer
 - Android Studio 2026.1.4 or newer when using Android Studio; install a preview build until this version reaches the stable channel
 - A JCEF-enabled IDE runtime, which Zoo Code requires to render its interface
-- Node.js **20.6.0 or newer** available on your `PATH`
+
+On first launch the plugin automatically downloads a pinned, platform-specific Node.js runtime from [nodejs.org](https://nodejs.org) (checksum-verified) and uses it to run the extension host, so no local Node.js installation is required. If the download is unavailable, the plugin falls back to a bundled Node.js or a Node.js **20.6.0 or newer** found on your `PATH`.
 
 ### Building from source
 
@@ -229,8 +230,8 @@ The JetBrains plugin communicates with the Extension Host using RPC over Unix-do
 
 ### Plugin does not load
 
-- Confirm Node.js 20.6.0 or newer is installed with `node --version`.
-- Make sure Node.js is available on the IDE process `PATH`.
+- On first launch, watch the IDE progress panel for the "Downloading Node.js runtime" task; the plugin needs network access to `nodejs.org` unless a suitable Node.js is already installed.
+- If you use a local Node.js instead (for example through a version manager), confirm it is 20.6.0 or newer with `node --version` and available on the IDE process `PATH`.
 - Restart the IDE after installing the plugin.
 - Review the JetBrains IDE log for Zoo Code or Extension Host errors.
 - See [Known Issues](docs/KNOWN_ISSUES.md).

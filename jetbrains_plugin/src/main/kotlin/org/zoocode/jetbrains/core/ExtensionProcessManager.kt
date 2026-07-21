@@ -292,7 +292,24 @@ class ExtensionProcessManager : Disposable {
      * Find Node.js executable
      */
     private fun findNodeExecutable(): String? {
-        // First check built-in Node.js
+        // First check the managed Node.js runtime downloaded by the plugin
+        NodeRuntimeManager.findManagedNodeExecutable()?.let {
+            LOG.info("Using managed Node.js runtime: $it")
+            return it
+        }
+
+        // Download the managed runtime on first launch (shows progress), unless it failed recently
+        val shouldAttemptDownload = !NodeRuntimeManager.hasRecentDownloadFailure()
+        if (shouldAttemptDownload) {
+            NodeRuntimeManager.getOrDownloadNodeExecutable()?.let {
+                LOG.info("Downloaded managed Node.js runtime: $it")
+                return it
+            }
+        } else {
+            LOG.info("Skipping managed Node.js runtime download: previous attempt failed recently")
+        }
+
+        // Then check built-in Node.js
         val resourcesPath = PluginResourceUtil.getResourcePath(PLUGIN_ID, NODE_MODULES_PATH)
         if (resourcesPath != null) {
             val resourceDir = File(resourcesPath)
@@ -310,7 +327,14 @@ class ExtensionProcessManager : Disposable {
         }
         
         // Then check system path
-        return findExecutableInPath("node")
+        findExecutableInPath("node")?.let { return it }
+
+        // Last resort: retry the managed download even if it failed recently,
+        // since no other Node.js executable is available
+        if (!shouldAttemptDownload) {
+            return NodeRuntimeManager.getOrDownloadNodeExecutable()
+        }
+        return null
     }
     
     /**
