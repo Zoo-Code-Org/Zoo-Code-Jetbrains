@@ -20,53 +20,56 @@ SPDX-License-Identifier: Apache-2.0
          Simple HTML elements (text formatting, paragraphs, and lists) can be added inside of <![CDATA[ ]]> tag.
          Guidelines: https://plugins.jetbrains.com/docs/marketplace/plugin-overview-page.html#plugin-description -->
     <description><![CDATA[
-        <h1>Zoo Code - Your AI-Powered Coding Assistant for JetBrains IDEs</h1>
-        <p>Zoo Code brings powerful AI coding capabilities directly into your JetBrains development environment, providing intelligent assistance for all your development needs.</p>
-        
-        <h2>Core Features</h2>
+        <h1>Zoo Code for JetBrains</h1>
+        <p><strong>Your AI-Powered Dev Team, Right in Your JetBrains IDE</strong></p>
+        <p>Zoo Code for JetBrains brings the <a href="https://github.com/Zoo-Code-Org/Zoo-Code">Zoo Code</a> AI coding assistant to IntelliJ-based IDEs. It runs the Zoo Code extension through a bundled extension host and integrates it with JetBrains editors, terminals, menus, and tool windows.</p>
+
+        <h2>What Can Zoo Code Do For You?</h2>
         <ul>
-            <li><strong>Natural Language Code Generation</strong>: Write code using simple descriptions and let Zoo Code do the rest</li>
-            <li><strong>Intelligent Context Awareness</strong>: Understands your entire codebase to provide relevant suggestions</li>
-            <li><strong>AI-Powered Assistance</strong>: Leverage advanced AI for code generation, refactoring, and improvements</li>
+            <li>Generate code from natural-language descriptions and specifications</li>
+            <li>Adapt through Code, Architect, Ask, Debug, and Custom modes</li>
+            <li>Refactor and debug existing code</li>
+            <li>Write and update documentation</li>
+            <li>Answer questions about your codebase</li>
+            <li>Automate repetitive tasks</li>
+            <li>Use Model Context Protocol (MCP) servers</li>
         </ul>
-        
+
+        <h2>Modes</h2>
+        <p>Zoo Code adapts to how you work:</p>
+        <ul>
+            <li><strong>Code Mode:</strong> everyday coding, edits, and file operations</li>
+            <li><strong>Architect Mode:</strong> plan systems, specifications, and migrations</li>
+            <li><strong>Ask Mode:</strong> get fast answers, explanations, and documentation</li>
+            <li><strong>Debug Mode:</strong> trace issues, add logs, and isolate root causes</li>
+            <li><strong>Custom Modes:</strong> create specialized modes for your team or workflow</li>
+        </ul>
+        <p>Learn more: <a href="https://docs.zoocode.dev/basic-usage/using-modes">Using Modes</a> | <a href="https://docs.zoocode.dev/advanced-usage/custom-modes">Custom Modes</a></p>
+
         <h2>Supported IDEs</h2>
-        <p>Zoo Code currently supports the following JetBrains IDE series:</p>
+        <p>Zoo Code supports JetBrains IDEs based on the IntelliJ Platform, including:</p>
         <ul>
-            <li><strong>IntelliJ IDEA</strong> (Ultimate & Community)</li>
-            <li><strong>WebStorm</strong> - JavaScript and TypeScript development</li>
-            <li><strong>PyCharm</strong> (Professional & Community) - Python development</li>
-            <li><strong>PhpStorm</strong> - PHP development</li>
-            <li><strong>RubyMine</strong> - Ruby development</li>
-            <li><strong>CLion</strong> - C/C++ development</li>
-            <li><strong>GoLand</strong> - Go development</li>
-            <li><strong>DataGrip</strong> - Database development</li>
-            <li><strong>Rider</strong> - .NET development</li>
-            <li><strong>Android Studio</strong> - Android development</li>
+            <li>IntelliJ IDEA (Ultimate and Community)</li>
+            <li>WebStorm</li>
+            <li>PyCharm (Professional and Community)</li>
+            <li>PhpStorm</li>
+            <li>RubyMine</li>
+            <li>CLion</li>
+            <li>GoLand</li>
+            <li>DataGrip</li>
+            <li>Rider</li>
+            <li>Android Studio <strong>2026.1.4 or newer</strong> (currently available as a preview)</li>
         </ul>
-        
-        <h2>Key Capabilities</h2>
-        <ul>
-            <li><strong>Code Generation</strong>: Generate complete functions, classes, and even entire files from descriptions</li>
-            <li><strong>Automated Refactoring</strong>: Improve code quality with AI-powered refactoring suggestions</li>
-            <li><strong>Bug Detection & Fixes</strong>: Identify and fix potential issues before they become problems</li>
-            <li><strong>Documentation Generation</strong>: Automatically generate comprehensive documentation</li>
-        </ul>
-        
+        <p>The plugin targets IntelliJ Platform build <strong>233</strong> (JetBrains 2023.3) or newer. Android Studio requires version <strong>2026.1.4 or newer</strong> because that release includes the JCEF support required by Zoo Code. At present, Android Studio 2026.1.4 is available through the preview channel.</p>
+
         <h2>Requirements</h2>
         <ul>
-            <li>Requires <a href="https://nodejs.org/">Node.js</a> v18+ installed</li>
-            <li>Requires JetBrains IDE version 2023.1 or later for optimal compatibility</li>
+            <li>A supported JetBrains IDE based on IntelliJ Platform build 233 or newer</li>
+            <li>Android Studio 2026.1.4 or newer when using Android Studio; install a preview build until this version reaches the stable channel</li>
+            <li>A JCEF-enabled IDE runtime, which Zoo Code requires to render its interface</li>
+            <li><a href="https://nodejs.org/">Node.js</a> <strong>20.6.0 or newer</strong> available on your PATH</li>
         </ul>
-        
-        <h2>Benefits</h2>
-        <ul>
-            <li><strong>Increased Productivity</strong>: Write code faster with intelligent AI assistance</li>
-            <li><strong>Improved Code Quality</strong>: Get suggestions for better patterns and practices</li>
-            <li><strong>Seamless Integration</strong>: Works directly within your JetBrains IDE</li>
-        </ul>
-        
-   ]]></description>
+    ]]></description>
    
    <!-- Change notes for the plugin -->
    <change-notes><![CDATA[
