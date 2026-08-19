@@ -2,7 +2,7 @@ name: Publish JetBrains plugin
 
 on:
   schedule:
-    - cron: "17,47 * * * *"
+    - cron: "17 0 * * *"
   repository_dispatch:
     types:
       - vscode-marketplace-released

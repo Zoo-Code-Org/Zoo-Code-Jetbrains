@@ -108,7 +108,7 @@ This directory contains the build and maintenance scripts for the Zoo Code JetBr
 ### Automated Marketplace Release
 
 The `Publish JetBrains plugin` GitHub Actions workflow checks the VS Code
-Marketplace twice an hour and publishes a matching JetBrains plugin when it
+Marketplace once a day and publishes a matching JetBrains plugin when it
 finds a new stable Zoo Code version. For immediate releases, the source
 repository can send a `vscode-marketplace-released` `repository_dispatch` event
 containing this payload:
