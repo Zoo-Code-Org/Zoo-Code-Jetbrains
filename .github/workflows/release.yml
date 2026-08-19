@@ -26,7 +26,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.release.outputs.number }}
-      published: ${{ steps.marketplace.outputs.published }}
+      marketplace-published: ${{ steps.marketplace.outputs.published }}
+      github-released: ${{ steps.github-release.outputs.published }}
 
     steps:
       - name: Resolve and verify the VS Code Marketplace release
@@ -110,12 +111,28 @@ jobs:
             echo "published=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Check whether the GitHub release exists
+        id: github-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.release.outputs.number }}
+        shell: bash
+        run: |
+          if gh release view "v${VERSION}" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+            echo "GitHub release v${VERSION} already exists."
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+          fi
+
   publish:
     name: Publish Zoo Code ${{ needs.prepare.outputs.version }}
     needs: prepare
-    if: needs.prepare.outputs.published != 'true'
+    if: needs.prepare.outputs.marketplace-published != 'true' || needs.prepare.outputs.github-released != 'true'
     runs-on: ubuntu-latest
     environment: jetbrains-marketplace-production
+    permissions:
+      contents: write
 
     steps:
       - name: Check out the JetBrains plugin
@@ -144,6 +161,7 @@ jobs:
         run: ./scripts/release.sh --mode release --clean
 
       - name: Publish to JetBrains Marketplace
+        if: needs.prepare.outputs.marketplace-published != 'true'
         env:
           PUBLISH_TOKEN: ${{ secrets.JETBRAINS_MARKETPLACE_TOKEN }}
           VERSION: ${{ needs.prepare.outputs.version }}
@@ -157,3 +175,27 @@ jobs:
             -PvscodePlugin=zoo-code \
             -PpluginVersion="$VERSION" \
             --no-configuration-cache
+
+      - name: Create or update the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        shell: bash
+        run: |
+          tag="v${VERSION}"
+          artifact="dist/ZooCode-${VERSION}.zip"
+          notes="Zoo Code ${VERSION} for JetBrains IDEs. This build packages the stable Zoo Code ${VERSION} VS Code Marketplace release."
+
+          test -f "$artifact"
+
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$tag" "$artifact" \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber
+          else
+            gh release create "$tag" "$artifact" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "Zoo Code ${tag}" \
+              --notes "$notes"
+          fi

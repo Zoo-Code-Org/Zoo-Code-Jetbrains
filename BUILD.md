@@ -125,9 +125,12 @@ containing this payload:
 
 The workflow independently verifies that the requested stable version exists
 on the VS Code Marketplace, skips versions already uploaded to JetBrains, runs
-`./scripts/release.sh --mode release --clean`, and publishes the resulting ZIP.
-It can also be run manually with a version from the Actions page to recover from
-a missed dispatch or retry a failed release.
+`./scripts/release.sh --mode release --clean`, publishes the resulting ZIP to
+JetBrains Marketplace, and creates a matching `v<version>` GitHub release with
+the ZIP attached. Both destinations are checked independently, so a retry can
+repair a missing Marketplace upload or GitHub release without duplicating the
+other. The workflow can also be run manually with a version from the Actions
+page to recover from a missed dispatch or retry a failed release.
 
 Configure the `jetbrains-marketplace-production` GitHub environment and add its
 `JETBRAINS_MARKETPLACE_TOKEN` secret. The token must be a permanent JetBrains
