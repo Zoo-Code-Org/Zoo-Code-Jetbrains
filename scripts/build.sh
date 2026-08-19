@@ -14,8 +14,8 @@ readonly SCRIPT_NAME="build.sh"
 readonly SCRIPT_VERSION="1.0.0"
 readonly ZOO_EXTENSION_PUBLISHER="ZooCodeOrganization"
 readonly ZOO_EXTENSION_NAME="zoo-code"
-# Will be set dynamically to latest version
-ZOO_EXTENSION_VERSION=""
+# May be pinned by release automation; otherwise it is resolved dynamically.
+ZOO_EXTENSION_VERSION="${ZOO_EXTENSION_VERSION:-}"
 ZOO_EXTENSION_URL=""
 
 # Build configuration
@@ -174,6 +174,18 @@ init_zoo_build_env() {
 # Get latest Zoo Code extension version
 get_latest_zoo_version() {
     log_step "Fetching latest Zoo Code extension version..."
+
+    if [[ -n "$ZOO_EXTENSION_VERSION" ]]; then
+        if [[ ! "$ZOO_EXTENSION_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            log_error "Invalid ZOO_EXTENSION_VERSION: $ZOO_EXTENSION_VERSION (expected x.y.z)"
+            exit 3
+        fi
+
+        ZOO_EXTENSION_URL="https://marketplace.visualstudio.com/_apis/public/gallery/publishers/${ZOO_EXTENSION_PUBLISHER}/vsextensions/${ZOO_EXTENSION_NAME}/${ZOO_EXTENSION_VERSION}/vspackage"
+        log_success "Using requested Zoo Code extension version: $ZOO_EXTENSION_VERSION"
+        update_gradle_version
+        return 0
+    fi
     
     local api_url="https://marketplace.visualstudio.com/_apis/public/gallery/extensionquery"
     local query_json='{
@@ -560,9 +572,6 @@ build_idea_with_zoo() {
     # Copy (not move) to preserve original for debugging if needed
     log_info "Creating $new_plugin_name from $old_name"
     cp "$plugin_file" "$new_plugin_path"
-    
-    # Remove the original file with old naming
-    rm -f "$plugin_file"
     
     log_success "Plugin renamed to: $new_plugin_name"
 }

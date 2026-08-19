@@ -49,10 +49,15 @@ if [[ -n "${GITHUB_TOKEN:-}" ]]; then
     github_headers+=(-H "Authorization: Bearer $GITHUB_TOKEN")
 fi
 
-log "Fetching the latest Zoo Code release"
+release_endpoint="latest"
+if [[ -n "${ZOO_EXTENSION_VERSION:-}" ]]; then
+    release_endpoint="tags/v${ZOO_EXTENSION_VERSION#v}"
+fi
+
+log "Fetching Zoo Code release $release_endpoint"
 curl --fail --silent --show-error --location --retry 3 \
     "${github_headers[@]}" \
-    "$GITHUB_API/repos/$ZOO_CODE_REPOSITORY/releases/latest" \
+    "$GITHUB_API/repos/$ZOO_CODE_REPOSITORY/releases/$release_endpoint" \
     --output "$release_json"
 
 release_name="$(node - "$release_json" <<'NODE'

@@ -1,43 +1,129 @@
-name: Create GitHub release
+name: Publish JetBrains plugin
 
 on:
-  push:
-    tags:
-      - "*"
+  schedule:
+    - cron: "17,47 * * * *"
+  repository_dispatch:
+    types:
+      - vscode-marketplace-released
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Zoo Code version to publish (for example, 3.78.0)
+        required: true
+        type: string
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: jetbrains-marketplace-production
+  cancel-in-progress: false
 
 jobs:
-  release:
-    name: Release tagged main commit
+  prepare:
+    name: Find unpublished stable release
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.release.outputs.number }}
+      published: ${{ steps.marketplace.outputs.published }}
 
     steps:
-      - name: Check out repository history
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-          lfs: true
-
-      - name: Check whether the tag is on main
-        id: tag-check
+      - name: Resolve and verify the VS Code Marketplace release
+        id: release
         env:
-          TAG_NAME: ${{ github.ref_name }}
+          DISPATCH_REPOSITORY: ${{ github.event.client_payload.repository }}
+          DISPATCH_VERSION: ${{ github.event.client_payload.version }}
+          MANUAL_VERSION: ${{ inputs.version }}
         shell: bash
         run: |
-          git fetch --no-tags origin main
-          tag_commit="$(git rev-list -n 1 "$TAG_NAME")"
+          expected_repository="Zoo-Code-Org/Zoo-Code"
+          requested_version="${DISPATCH_VERSION:-$MANUAL_VERSION}"
+          requested_version="${requested_version#v}"
 
-          if git merge-base --is-ancestor "$tag_commit" origin/main; then
-            echo "on_mainline=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "on_mainline=false" >> "$GITHUB_OUTPUT"
-            echo "Tag $TAG_NAME does not point to a commit on main; skipping release."
+          if [ "$GITHUB_EVENT_NAME" = "repository_dispatch" ] && [ "$DISPATCH_REPOSITORY" != "$expected_repository" ]; then
+            echo "Expected a release from ${expected_repository}, received ${DISPATCH_REPOSITORY:-<empty>}."
+            exit 1
           fi
 
+          if [ -n "$requested_version" ] && [[ ! "$requested_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Version must be a stable semantic version (x.y.z), received: $requested_version."
+            exit 1
+          fi
+
+          query='{"filters":[{"criteria":[{"filterType":7,"value":"ZooCodeOrganization.zoo-code"}]}],"flags":439}'
+          response="$(curl --fail --silent --show-error --retry 3 \
+            -H "Content-Type: application/json" \
+            -H "Accept: application/json;api-version=7.1-preview.1" \
+            --data "$query" \
+            https://marketplace.visualstudio.com/_apis/public/gallery/extensionquery)"
+
+          # shellcheck disable=SC2016
+          version="$(printf '%s' "$response" | REQUESTED_VERSION="$requested_version" node -e '
+            let input = "";
+            process.stdin.on("data", chunk => input += chunk);
+            process.stdin.on("end", () => {
+              const data = JSON.parse(input);
+              const requested = process.env.REQUESTED_VERSION;
+              const versions = data.results?.[0]?.extensions?.[0]?.versions ?? [];
+              const stable = versions.filter(({ properties = [] }) =>
+                !properties.some(({ key, value }) =>
+                  key === "Microsoft.VisualStudio.Code.PreRelease" && value === "true"
+                )
+              );
+              const release = requested
+                ? stable.find(({ version }) => version === requested)
+                : stable[0];
+
+              if (!release) {
+                console.error(requested
+                  ? `ZooCodeOrganization.zoo-code ${requested} is not a stable VS Code Marketplace release.`
+                  : "The VS Code Marketplace did not return a stable Zoo Code release.");
+                process.exit(1);
+              }
+              process.stdout.write(release.version);
+            });
+          ')"
+
+          echo "Resolved stable Zoo Code release $version."
+          echo "number=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Check whether this version is already published
+        id: marketplace
+        env:
+          VERSION: ${{ steps.release.outputs.number }}
+        shell: bash
+        run: |
+          if curl --fail --silent --show-error --retry 3 \
+            "https://plugins.jetbrains.com/api/plugins/32979/updates?size=100" | \
+            node -e '
+              let input = "";
+              process.stdin.on("data", chunk => input += chunk);
+              process.stdin.on("end", () => {
+                const updates = JSON.parse(input);
+                process.exit(updates.some(update => update.version === process.env.VERSION) ? 0 : 1);
+              });
+            '; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+            echo "Zoo Code $VERSION is already present on JetBrains Marketplace; skipping the build and upload."
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  publish:
+    name: Publish Zoo Code ${{ needs.prepare.outputs.version }}
+    needs: prepare
+    if: needs.prepare.outputs.published != 'true'
+    runs-on: ubuntu-latest
+    environment: jetbrains-marketplace-production
+
+    steps:
+      - name: Check out the JetBrains plugin
+        uses: actions/checkout@v5
+        with:
+          lfs: true
+
       - name: Set up Java 17
-        if: steps.tag-check.outputs.on_mainline == 'true'
         uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -45,28 +131,29 @@ jobs:
           cache: gradle
 
       - name: Set up Node.js
-        if: steps.tag-check.outputs.on_mainline == 'true'
         uses: actions/setup-node@v6
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: extension_host/package-lock.json
 
-      - name: Build release extension
-        if: steps.tag-check.outputs.on_mainline == 'true'
-        run: ./scripts/build.sh --mode release --clean
-
-      - name: Create GitHub release
-        if: steps.tag-check.outputs.on_mainline == 'true'
+      - name: Build the plugin from the released VS Code extension
         env:
-          GH_TOKEN: ${{ github.token }}
-          TAG_NAME: ${{ github.ref_name }}
-        run: |
-          if ! gh release view "$TAG_NAME" >/dev/null 2>&1; then
-            gh release create "$TAG_NAME" \
-              --verify-tag \
-              --generate-notes \
-              --title "$TAG_NAME"
-          fi
+          GITHUB_TOKEN: ${{ github.token }}
+          ZOO_EXTENSION_VERSION: ${{ needs.prepare.outputs.version }}
+        run: ./scripts/release.sh --mode release --clean
 
-          gh release upload "$TAG_NAME" dist/ZooCode-*.zip --clobber
+      - name: Publish to JetBrains Marketplace
+        env:
+          PUBLISH_TOKEN: ${{ secrets.JETBRAINS_MARKETPLACE_TOKEN }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        working-directory: jetbrains_plugin
+        shell: bash
+        run: |
+          test -n "$PUBLISH_TOKEN"
+          test -f "build/distributions/ZooCode-${VERSION}.zip"
+          ./gradlew publishPlugin \
+            -PdebugMode=release \
+            -PvscodePlugin=zoo-code \
+            -PpluginVersion="$VERSION" \
+            --no-configuration-cache

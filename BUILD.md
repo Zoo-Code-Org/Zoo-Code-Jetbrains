@@ -12,8 +12,8 @@ This directory contains the build and maintenance scripts for the Zoo Code JetBr
 # Build the project
 ./scripts/build.sh
 
-# Create a GitHub release from an existing tag and upload the built ZIP
-./scripts/release.sh v3.71.0
+# Build a release using the latest Zoo Code release notes
+./scripts/release.sh --mode release --clean
 
 # Run tests
 ./scripts/test.sh
@@ -47,7 +47,7 @@ This directory contains the build and maintenance scripts for the Zoo Code JetBr
 | `run.ps1` | Main entry point (Windows) | PowerShell wrapper for Windows users |
 | `setup.sh` | Environment setup | Initialize development environment |
 | `build.sh` | Build system | Build VSCode extension and IDEA plugin |
-| `release.sh` | GitHub release | Create a release and upload an already-built plugin ZIP |
+| `release.sh` | Release build | Import the latest Zoo Code release notes and build the JetBrains plugin |
 | `clean.sh` | Cleanup utility | Clean build artifacts and temporary files |
 | `test.sh` | Test runner | Run tests and validations |
 
@@ -105,22 +105,43 @@ This directory contains the build and maintenance scripts for the Zoo Code JetBr
 ./scripts/clean.sh --force all
 ```
 
-### Manual GitHub Release
+### Automated Marketplace Release
 
-Build the release plugin, push its tag, and create the GitHub release:
+The `Publish JetBrains plugin` GitHub Actions workflow checks the VS Code
+Marketplace twice an hour and publishes a matching JetBrains plugin when it
+finds a new stable Zoo Code version. For immediate releases, the source
+repository can send a `vscode-marketplace-released` `repository_dispatch` event
+containing this payload:
 
-```bash
-./scripts/build.sh --mode release --clean
-git push origin v3.71.0
-./scripts/release.sh v3.71.0
+```json
+{
+  "event_type": "vscode-marketplace-released",
+  "client_payload": {
+    "repository": "Zoo-Code-Org/Zoo-Code",
+    "version": "3.78.0"
+  }
+}
 ```
 
-The release script requires the GitHub CLI (`gh`) to be authenticated. It uses
-the single `dist/ZooCode-*.zip` artifact by default. Pass an explicit artifact
-path if the directory contains multiple builds:
+The workflow independently verifies that the requested stable version exists
+on the VS Code Marketplace, skips versions already uploaded to JetBrains, runs
+`./scripts/release.sh --mode release --clean`, and publishes the resulting ZIP.
+It can also be run manually with a version from the Actions page to recover from
+a missed dispatch or retry a failed release.
+
+Configure the `jetbrains-marketplace-production` GitHub environment and add its
+`JETBRAINS_MARKETPLACE_TOKEN` secret. The token must be a permanent JetBrains
+Marketplace token authorized to upload updates for plugin ID `32979` (Zoo Code).
+
+The dispatching Zoo Code workflow needs a GitHub App token or fine-grained PAT
+with permission to create repository dispatch events in
+`Zoo-Code-Org/Zoo-Code-Jetbrains`; a source repository's default
+`GITHUB_TOKEN` cannot dispatch to another repository.
+
+For a local release build pinned to a particular Marketplace version:
 
 ```bash
-./scripts/release.sh v3.71.0 dist/ZooCode-3.71.0.zip
+ZOO_EXTENSION_VERSION=3.78.0 ./scripts/release.sh --mode release --clean
 ```
 
 ## Build Modes
@@ -155,6 +176,7 @@ BUILD_MODE=debug ./scripts/build.sh
 | `VSIX_FILE` | Path to existing VSIX file | - |
 | `SKIP_BASE_BUILD` | Skip base extension build | `false` |
 | `SKIP_IDEA_BUILD` | Skip IDEA plugin build | `false` |
+| `ZOO_EXTENSION_VERSION` | Pin the stable VS Code Marketplace version included in the JetBrains plugin | Latest stable version |
 
 ## Project Structure
 
