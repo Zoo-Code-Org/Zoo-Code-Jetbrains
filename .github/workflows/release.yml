@@ -154,6 +154,16 @@ jobs:
           cache: npm
           cache-dependency-path: extension_host/package-lock.json
 
+      - name: Install native Node.js build dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends \
+            build-essential \
+            libx11-dev \
+            libxkbfile-dev \
+            pkg-config
+
       - name: Build the plugin from the released VS Code extension
         env:
           GITHUB_TOKEN: ${{ github.token }}
