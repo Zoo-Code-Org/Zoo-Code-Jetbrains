@@ -139,6 +139,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           lfs: true
+          submodules: recursive
 
       - name: Set up Java 17
         uses: actions/setup-java@v5
@@ -164,11 +165,14 @@ jobs:
             libxkbfile-dev \
             pkg-config
 
+      - name: Prepare the extension host source
+        run: ./scripts/setup.sh --skip-deps --verbose
+
       - name: Build the plugin from the released VS Code extension
         env:
           GITHUB_TOKEN: ${{ github.token }}
           ZOO_EXTENSION_VERSION: ${{ needs.prepare.outputs.version }}
-        run: ./scripts/release.sh --mode release --clean
+        run: ./scripts/release.sh --mode release --clean --verbose
 
       - name: Publish to JetBrains Marketplace
         if: needs.prepare.outputs.marketplace-published != 'true'
