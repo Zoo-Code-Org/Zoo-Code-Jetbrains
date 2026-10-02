@@ -7,7 +7,6 @@ package org.zoocode.jetbrains.extensions
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import org.zoocode.jetbrains.extensions.core.ExtensionManager
 import org.zoocode.jetbrains.extensions.plugin.zoo.ZooExtensionProvider
-import org.zoocode.jetbrains.extensions.plugin.kilo.KiloCodeExtensionProvider
 
 /**
  * Test class for extension decoupling functionality
@@ -80,7 +79,6 @@ class ExtensionDecouplingTest : BasePlatformTestCase() {
         // Test that all providers implement the interface correctly
         val providers = listOf(
             ZooExtensionProvider(),
-            KiloCodeExtensionProvider(),
         )
         
         providers.forEach { provider ->

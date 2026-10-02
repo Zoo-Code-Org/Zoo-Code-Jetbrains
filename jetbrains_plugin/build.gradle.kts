@@ -4,6 +4,8 @@
 // SPDX-License-Identifier: APACHE2.0
 // SPDX-License-Identifier: Apache-2.0
 
+import org.jetbrains.intellij.tasks.RunPluginVerifierTask
+
 // Convenient for reading variables from gradle.properties
 fun properties(key: String) = providers.gradleProperty(key)
 
@@ -26,6 +28,11 @@ java {
 
 kotlin {
     jvmToolchain(17)
+}
+
+// Toolchain launcher used by verification tasks that start a plain JVM.
+val verificationJavaLauncher = javaToolchains.launcherFor {
+    languageVersion.set(JavaLanguageVersion.of(17))
 }
 
 // ------------------------------------------------------------
@@ -291,6 +298,165 @@ tasks {
         version.set(properties("pluginVersion"))
         sinceBuild.set(properties("pluginSinceBuild"))
         untilBuild.set("")
+    }
+
+    // One binary must keep 233 support and stay compatible with the 2026.3 terminal
+    // changes. Verify against the newest supported platform; failures are limited to
+    // hard compatibility problems so deprecated-API notices do not hide them.
+    //
+    // The gradle-intellij 1.x task resolves ideVersions from release feeds only, and
+    // IC-263.5701.42 (idea263Build property) is an EAP build that no feed lists. CI
+    // (release.yml) downloads the exact build and passes it as
+    // -PverifierLocalIde=<unpacked IDE directory>. Local runs have two clear paths:
+    //   ./gradlew runPluginVerifier -PverifierLocalIde=<unpacked ideaIC-263.5701.42 dir>
+    //   ./gradlew runPluginVerifier -PverifierIdeVersion=IC-<release feed build>
+    runPluginVerifier {
+        // Verifier releases: https://repo1.maven.org/maven2/org/jetbrains/intellij/plugins/verifier-cli/
+        verifierVersion.set("1.410")
+        val idea263Build = providers.gradleProperty("idea263Build").orElse("263.5701.42")
+        val explicitVersions = providers.gradleProperty("verifierIdeVersion").orNull
+        ideVersions.set(listOf(explicitVersions ?: "IC-${idea263Build.get()}"))
+        failureLevel.set(
+            listOf(
+                RunPluginVerifierTask.FailureLevel.COMPATIBILITY_PROBLEMS,
+                RunPluginVerifierTask.FailureLevel.INVALID_PLUGIN
+            )
+        )
+        val localIde = providers.gradleProperty("verifierLocalIde").orNull
+        if (localIde != null) {
+            ideVersions.set(emptyList())
+            localPaths.set(listOf(file(localIde)))
+        } else if (explicitVersions == null) {
+            doFirst {
+                throw GradleException(
+                    "runPluginVerifier needs an IDE target. IC-${idea263Build.get()} is an EAP build that " +
+                        "gradle-intellij cannot resolve from release feeds. Download " +
+                        "ideaIC-${idea263Build.get()}-EAP-SNAPSHOT.zip, unpack it, and pass " +
+                        "-PverifierLocalIde=<unpacked directory> (this is what release.yml does for CI), " +
+                        "or verify a release feed build with -PverifierIdeVersion=IC-<version>.",
+                )
+            }
+        }
+    }
+
+    // Regression gate: a packaged method reference to LocalTerminalDirectRunner
+    // .createProcess(ShellStartupOptions) breaks the same binary on IntelliJ 2026.3,
+    // where that method returns java.lang.Process instead of PtyProcess, so a 2023.3
+    // call site does not resolve. The 2023.3 path and the 2026.3 path both start the
+    // process through TerminalInstance.startTerminalProcess.
+    //
+    // The packaged plugin jar inside the sandbox: instrumentation may rename it with
+    // an "instrumented-" prefix, and patchPluginXml writes the release descriptor into
+    // exactly this copy.
+    fun packagedPluginJar(): File {
+        val archiveName = jar.get().archiveFileName.get()
+        val libDir = File(File(prepareSandbox.get().destinationDir, intellij.pluginName.get()), "lib")
+        val candidates = libDir.listFiles { file -> file.name.endsWith(archiveName) }
+            ?: throw GradleException("Sandbox lib directory not found: $libDir")
+        return candidates.firstOrNull { it.name.startsWith("instrumented-") }
+            ?: candidates.firstOrNull()
+            ?: throw GradleException("No packaged plugin jar ($archiveName) found in $libDir")
+    }
+
+    // The scan delegates to smoke/Smoke263DispatchCheck.java --scan-jar so the banned
+    // reference list and the constant-pool parsing live in one place. The checker is
+    // linked against the 233 platform jars already on the compile classpath; this task
+    // never needs the 2026.3 IDE. The scan target is the instrumented jar in the
+    // sandbox, the exact bytes that the Plugin Verifier checks and that the published
+    // zip packages. The marker output makes the task up-to-date when the sandbox and
+    // the checker are unchanged.
+    register("verifyPackagedBytecode") {
+        group = "verification"
+        description = "Reject packaged references to terminal APIs removed in IntelliJ 2026.3"
+        val checker = layout.projectDirectory.file("smoke/Smoke263DispatchCheck.java")
+        inputs.files(prepareSandbox.map { it.destinationDir })
+        inputs.file(checker)
+        outputs.file(layout.buildDirectory.file("verification/packaged-bytecode.ok"))
+        dependsOn(prepareSandbox)
+        doLast {
+            val pluginJar = packagedPluginJar()
+            project.exec {
+                commandLine(
+                    verificationJavaLauncher.get().executablePath.asFile.absolutePath,
+                    "-cp",
+                    configurations.getByName("compileClasspath").asPath,
+                    checker.asFile.absolutePath,
+                    "--scan-jar",
+                    pluginJar.absolutePath,
+                )
+            }
+            layout.buildDirectory.file("verification/packaged-bytecode.ok").get().asFile.writeText(pluginJar.path)
+        }
+    }
+    named("check") {
+        dependsOn("verifyPackagedBytecode")
+    }
+
+    // Headless 2026.3 proof that the Plugin Verifier cannot give: the platform entry
+    // point createTtyConnector(ShellStartupOptions) exists and is overridable, the
+    // override in TerminalInstance.createCustomRunner has the identical descriptor on
+    // a direct LocalTerminalDirectRunner subclass so the virtual dispatch binds, no
+    // packaged class references the removed createProcess descriptor, and
+    // RawOutputTtyConnector decodes and forwards output when linked against this IDE
+    // build's jediterm and pty4j.
+    register("smoke263Dispatch") {
+        group = "verification"
+        description = "Prove the 2026.3 createTtyConnector dispatch against an unpacked ideaIC 263.5701.42"
+        val checker = layout.projectDirectory.file("smoke/Smoke263DispatchCheck.java")
+        val idea263Build = providers.gradleProperty("idea263Build").orElse("263.5701.42")
+        val ideDir = providers.gradleProperty("smokeLocalIde")
+            .orElse(layout.buildDirectory.dir(idea263Build.map { "ideaIC-$it" }).map { it.asFile.absolutePath })
+        // The checker reads the first jar as bytes and loads the other five. Track only
+        // this jar set so unrelated files in the unpacked IDE cannot invalidate the task.
+        val ideJarPaths = listOf(
+            "plugins/terminal/lib/terminal.jar",
+            "lib/intellij.libraries.pty4j.jar",
+            "lib/intellij.libraries.jediterm.core.jar",
+            "lib/intellij.libraries.jediterm.ui.jar",
+            "lib/util-8.jar",
+            "lib/util_rt.jar",
+        )
+        inputs.files(prepareSandbox.map { it.destinationDir })
+        inputs.file(checker)
+        inputs.files(ideDir.map { ideDirectory -> ideJarPaths.map { File(ideDirectory, it) } })
+        inputs.property("idea263Build", idea263Build)
+        outputs.file(layout.buildDirectory.file("verification/smoke263-dispatch.ok"))
+        dependsOn(prepareSandbox)
+        doLast {
+            val ideDirectory = file(ideDir.get())
+            check(ideDirectory.isDirectory) {
+                "Unpacked 2026.3 IDE not found at $ideDirectory. Unpack " +
+                    "ideaIC-${idea263Build.get()}-EAP-SNAPSHOT.zip there or pass " +
+                    "-PsmokeLocalIde=<directory>."
+            }
+            val ideJars = ideJarPaths.map { ideDirectory.resolve(it) }
+            ideJars.forEach {
+                check(it.isFile) {
+                    "Expected 2026.3 IDE jar missing: $it. The ideaIC layout changed and the " +
+                        "smoke checker needs updated jar locations."
+                }
+            }
+            // The checker classpath holds only jars that the connector links against and
+            // that ship as Java 8 or Java 11 bytecode. The 2026.3 platform classes are
+            // Java 25 bytecode; the checker reads them as bytes and must never load them.
+            // util-8 carries the platform Logger, AppExecutorUtil and the Kotlin runtime
+            // that the connector needs at class-init time.
+            val terminalJar = ideJars.first()
+            val pluginJar = packagedPluginJar()
+            val classpath = ideJars.drop(1) + pluginJar
+            project.exec {
+                commandLine(
+                    verificationJavaLauncher.get().executablePath.asFile.absolutePath,
+                    "-cp",
+                    classpath.joinToString(File.pathSeparator),
+                    checker.asFile.absolutePath,
+                    pluginJar.absolutePath,
+                    terminalJar.absolutePath,
+                )
+            }
+            val smokeMarker = layout.buildDirectory.file("verification/smoke263-dispatch.ok").get().asFile
+            smokeMarker.writeText("${idea263Build.get()} ${pluginJar.absolutePath}")
+        }
     }
 
     signPlugin {

@@ -140,6 +140,19 @@ jobs:
         with:
           lfs: true
           submodules: recursive
+          persist-credentials: false
+
+      # The pinned digest lives in jetbrains_plugin/gradle.properties next to
+      # idea263Build, so one value serves this workflow and pr.yml.
+      - name: Read the pinned verification IDE digest
+        shell: bash
+        run: |
+          digest="$(sed -n 's/^idea263Sha256=//p' jetbrains_plugin/gradle.properties)"
+          if [ -z "$digest" ]; then
+            echo "idea263Sha256 is missing from jetbrains_plugin/gradle.properties."
+            exit 1
+          fi
+          echo "IDEA_263_SHA256=$digest" >> "$GITHUB_ENV"
 
       - name: Set up Java 17
         uses: actions/setup-java@v5
@@ -173,6 +186,81 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           ZOO_EXTENSION_VERSION: ${{ needs.prepare.outputs.version }}
         run: ./scripts/release.sh --mode release --clean --verbose
+
+      # Every verification step runs with the same -P flags as the publish step so
+      # Gradle reuses one built artifact across the gates and the upload. Verifying a
+      # differently configured build would say nothing about the shipped zip.
+      - name: Reject packaged references to the 2026.3-removed terminal API
+        working-directory: jetbrains_plugin
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        shell: bash
+        run: >
+          ./gradlew verifyPackagedBytecode
+          -PdebugMode=release
+          -PvscodePlugin=zoo-code
+          -PpluginVersion="$VERSION"
+          --no-configuration-cache
+
+      # gradle-intellij 1.x resolves verification targets from release feeds only, so the
+      # 2026.3 EAP build is fetched from the IntelliJ snapshots repository, checked
+      # against the pinned SHA-256, cached, and handed to runPluginVerifier through
+      # -PverifierLocalIde. The build number lives in jetbrains_plugin/gradle.properties.
+      - name: Restore the cached 2026.3 verification IDE
+        id: idea263-cache
+        uses: actions/cache@v4
+        with:
+          path: jetbrains_plugin/build/ideaIC-*
+          key: ideaIC-263-${{ env.IDEA_263_SHA256 }}
+
+      - name: Download and unpack the 2026.3 verification IDE
+        working-directory: jetbrains_plugin
+        shell: bash
+        run: |
+          verifier_build="$(sed -n 's/^idea263Build=//p' gradle.properties)"
+          ide_zip="build/ideaIC-${verifier_build}.zip"
+          ide_dir="build/ideaIC-${verifier_build}"
+          if [ -d "$ide_dir/bin" ]; then
+            echo "Using cached $ide_dir"
+            exit 0
+          fi
+          curl --fail --silent --show-error --retry 3 --location -o "$ide_zip" \
+            "https://www.jetbrains.com/intellij-repository/snapshots/com/jetbrains/intellij/idea/ideaIC/${verifier_build}-EAP-SNAPSHOT/ideaIC-${verifier_build}-EAP-SNAPSHOT.zip"
+          echo "${IDEA_263_SHA256}  ${ide_zip}" | sha256sum --check --status || {
+            echo "Downloaded ideaIC-${verifier_build}.zip does not match the pinned SHA-256 ${IDEA_263_SHA256}."
+            exit 1
+          }
+          unzip -q "$ide_zip" -d "$ide_dir"
+
+      - name: Verify plugin compatibility with IDEA 2026.3
+        working-directory: jetbrains_plugin
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        shell: bash
+        run: |
+          verifier_build="$(sed -n 's/^idea263Build=//p' gradle.properties)"
+          ./gradlew runPluginVerifier \
+            -PdebugMode=release \
+            -PvscodePlugin=zoo-code \
+            -PpluginVersion="$VERSION" \
+            -PverifierLocalIde="build/ideaIC-${verifier_build}" \
+            --no-configuration-cache
+
+      # The verifier cannot see a silently non-overriding createTtyConnector
+      # signature; this step proves the dispatch binds on the exact downloaded build.
+      - name: Smoke check the 2026.3 createTtyConnector dispatch
+        working-directory: jetbrains_plugin
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        shell: bash
+        run: |
+          verifier_build="$(sed -n 's/^idea263Build=//p' gradle.properties)"
+          ./gradlew smoke263Dispatch \
+            -PdebugMode=release \
+            -PvscodePlugin=zoo-code \
+            -PpluginVersion="$VERSION" \
+            -PsmokeLocalIde="build/ideaIC-${verifier_build}" \
+            --no-configuration-cache
 
       - name: Publish to JetBrains Marketplace
         if: needs.prepare.outputs.marketplace-published != 'true'
