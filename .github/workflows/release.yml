@@ -272,11 +272,23 @@ jobs:
         run: |
           test -n "$PUBLISH_TOKEN"
           test -f "build/distributions/ZooCode-${VERSION}.zip"
-          ./gradlew publishPlugin \
+          # The public updates API hides updates that wait for Marketplace review,
+          # so the prepare job cannot see a version that was already uploaded. A
+          # duplicate-version rejection proves the upload exists. Treat only that
+          # rejection as done. Every other failure must stop the run.
+          log="$RUNNER_TEMP/publish-plugin.log"
+          if ! ./gradlew publishPlugin \
             -PdebugMode=release \
             -PvscodePlugin=zoo-code \
             -PpluginVersion="$VERSION" \
-            --no-configuration-cache
+            --no-configuration-cache 2>&1 | tee "$log"; then
+            if grep -Fq "already contains version ${VERSION} in channel" "$log"; then
+              echo "JetBrains Marketplace already holds Zoo Code ${VERSION}; the update awaits Marketplace review."
+              exit 0
+            fi
+            exit 1
+          fi
+          echo "Published Zoo Code ${VERSION} to the default Marketplace channel."
 
       - name: Create or update the GitHub release
         env:
