@@ -62,6 +62,9 @@ jobs:
         run: |
           ide_zip="build/ideaIC-${IDEA_263_BUILD}.zip"
           ide_dir="build/ideaIC-${IDEA_263_BUILD}"
+          # build/ is gitignored, so a fresh checkout has no build directory.
+          # Create it before curl writes the archive.
+          mkdir -p build
           if [ -d "$ide_dir/bin" ]; then
             echo "Using cached $ide_dir"
             exit 0
