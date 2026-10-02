@@ -4,6 +4,8 @@
 
 package org.zoocode.jetbrains.terminal
 
+import com.intellij.execution.ExecutionException
+import com.intellij.execution.process.LocalPtyOptions
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
@@ -13,7 +15,9 @@ import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.terminal.JBTerminalWidget
 import com.intellij.terminal.ui.TerminalWidget
+import com.jediterm.terminal.TtyConnector
 import com.pty4j.PtyProcess
+import com.pty4j.PtyProcessBuilder
 import org.zoocode.jetbrains.core.ServiceProxyRegistry
 import org.zoocode.jetbrains.ipc.proxy.IRPCProtocol
 import org.zoocode.jetbrains.ipc.proxy.interfaces.ExtHostTerminalShellIntegrationProxy
@@ -25,6 +29,8 @@ import kotlinx.coroutines.cancel
 import org.jetbrains.plugins.terminal.LocalTerminalDirectRunner
 import org.jetbrains.plugins.terminal.ShellStartupOptions
 import org.jetbrains.plugins.terminal.ShellTerminalWidget
+import java.io.IOException
+import java.nio.charset.StandardCharsets
 
 /**
  * Terminal instance class
@@ -150,7 +156,7 @@ class TerminalInstance(
 
         // 🎯 Add terminalWidget to Terminal tool window
         addToTerminalToolWindow()
-        
+
         notifyTerminalOpened()
         notifyShellIntegrationChange()
         handleInitialText()
@@ -195,18 +201,51 @@ class TerminalInstance(
     }
 
     /**
-     * Create custom runner
+     * Create custom runner.
+     *
+     * IntelliJ 2023.3 runs the session through [createProcess] returning PtyProcess
+     * and then through [createTtyConnector] with a PtyProcess argument. On 2026.3
+     * (build 263.5701.42) that createProcess signature is gone: the method now returns
+     * java.lang.Process, and the session enters through createTtyConnector with a
+     * ShellStartupOptions argument. The second method is declared without `override`
+     * because it does not exist in 2023.3; at runtime its exact descriptor overrides
+     * the 2026.3 method and shadows the LocalTerminalDirectRunner implementation. No
+     * method calls super.createProcess or super.createTtyConnector, because the 2023.3
+     * descriptors do not resolve on 2026.3.
      */
     private fun createCustomRunner(): LocalTerminalDirectRunner {
         return object : LocalTerminalDirectRunner(project) {
             override fun createProcess(options: ShellStartupOptions): PtyProcess {
                 logger.info("🔧 Custom createProcess method called...")
-                logger.info("Startup options: $options")
 
-                val originalProcess = super.createProcess(options)
-                logger.info("✅ Original Process created: ${originalProcess.javaClass.name}")
+                return startTerminalProcess(options)
+            }
 
-                return createProxyPtyProcess(originalProcess)
+            override fun createTtyConnector(process: PtyProcess): TtyConnector {
+                logger.info("🔧 Custom createTtyConnector(PtyProcess) method called...")
+                return createRawOutputConnector(process)
+            }
+
+            /**
+             * The 2026.3 session entry point. On build 263 the platform
+             * dispatches createTtyConnector with ShellStartupOptions, because
+             * createProcess no longer exists there with the 2023.3 signature.
+             * The method is compiled without `override`, because 2023.3
+             * declares no such method; at runtime the identical descriptor
+             * overrides the platform method.
+             *
+             * Support boundary: this bridge is local-only. It starts a
+             * PtyProcess on the local machine. WSL-internal terminals,
+             * dev-container terminals, and RemDev sessions are not supported.
+             * The 2026.3 WSL-internal and dev-container sessions carry
+             * non-local EEL descriptors, and this bridge implements none. The
+             * RemDev frontend receives the inherited platform guard and never
+             * reaches this runner. No EEL support is claimed.
+             */
+            fun createTtyConnector(startupOptions: ShellStartupOptions): TtyConnector {
+                logger.info("🔧 Custom createTtyConnector(ShellStartupOptions) method called...")
+                val process = startTerminalProcess(startupOptions)
+                return createRawOutputConnector(process)
             }
 
             override fun createShellTerminalWidget(
@@ -220,6 +259,66 @@ class TerminalInstance(
             override fun configureStartupOptions(baseOptions: ShellStartupOptions): ShellStartupOptions {
                 logger.info("🔧 Custom configureStartupOptions method called...")
                 return super.configureStartupOptions(baseOptions)
+            }
+        }
+    }
+
+    /**
+     * Start the PTY process for the already configured startup options.
+     *
+     * Replicates LocalTerminalDirectRunner.createProcess so that no packaged class
+     * references that method, which IntelliJ 2026.3 removed.
+     */
+    private fun startTerminalProcess(options: ShellStartupOptions): PtyProcess {
+        val command = options.shellCommand
+            ?: throw ExecutionException("Shell command must not be null")
+        val workingDirectory = options.workingDirectory
+            ?: throw ExecutionException("Working directory must not be null")
+        val initialTermSize = options.initialTermSize
+
+        logger.info("🔧 Starting PTY process: command=$command, cwd=$workingDirectory")
+
+        try {
+            val builder = PtyProcessBuilder(command.toTypedArray())
+                .setEnvironment(options.envVariables)
+                .setDirectory(workingDirectory)
+                .setInitialColumns(initialTermSize?.columns)
+                .setInitialRows(initialTermSize?.rows)
+                .setUseWinConPty(LocalPtyOptions.shouldUseWinConPty())
+            val process = builder.start()
+            logger.info("✅ PTY process created: ${process.javaClass.name}")
+            return process
+        } catch (e: IOException) {
+            throw ExecutionException("Failed to start terminal process in $workingDirectory", e)
+        }
+    }
+
+    /**
+     * Create TtyConnector that forwards process output to ExtHost.
+     *
+     * UTF-8 matches the platform connector on every supported build:
+     * LocalTerminalDirectRunner assigns myDefaultCharset = StandardCharsets.UTF_8
+     * and passes it to PtyProcessTtyConnector (intellij-community branch 233) and
+     * to LocalTerminalTtyConnector (2026.3), so the raw bytes decode the same way
+     * the stock terminal would.
+     */
+    private fun createRawOutputConnector(process: PtyProcess): TtyConnector {
+        logger.info("🔧 Creating TtyConnector with raw output forwarding...")
+        return RawOutputTtyConnector(process, StandardCharsets.UTF_8, createRawDataCallback())
+    }
+
+    /**
+     * Create raw data callback handler
+     */
+    private fun createRawDataCallback(): TerminalRawDataCallback {
+        return TerminalRawDataCallback { data ->
+            logger.debug("📥 Raw data: ${data.length} chars")
+
+            try {
+                sendRawDataToExtHost(data)
+                terminalShellIntegration.appendRawOutput(data)
+            } catch (e: Exception) {
+                logger.error("❌ Failed to process raw data (terminal: $extHostTerminalId)", e)
             }
         }
     }
@@ -275,34 +374,6 @@ class TerminalInstance(
             }
         } catch (e: Exception) {
             logger.error("❌ Failed to set terminal close event listener: $extHostTerminalId", e)
-        }
-    }
-
-    /**
-     * Create proxy PtyProcess to intercept input/output streams
-     */
-    private fun createProxyPtyProcess(originalProcess: PtyProcess): PtyProcess {
-        logger.info("🔧 Creating proxy PtyProcess to intercept input/output streams...")
-
-        val rawDataCallback = createRawDataCallback()
-        return ProxyPtyProcess(originalProcess, rawDataCallback)
-    }
-
-    /**
-     * Create raw data callback handler
-     */
-    private fun createRawDataCallback(): ProxyPtyProcessCallback {
-        return object : ProxyPtyProcessCallback {
-            override fun onRawData(data: String, streamType: String) {
-                logger.debug("📥 Raw data [$streamType]: ${data.length} chars")
-
-                try {
-                    sendRawDataToExtHost(data)
-                    terminalShellIntegration.appendRawOutput(data)
-                } catch (e: Exception) {
-                    logger.error("❌ Failed to process raw data (terminal: $extHostTerminalId)", e)
-                }
-            }
         }
     }
 
@@ -383,16 +454,16 @@ class TerminalInstance(
         try {
             val terminalToolWindowManager = org.jetbrains.plugins.terminal.TerminalToolWindowManager.getInstance(project)
             val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(TERMINAL_TOOL_WINDOW_ID)
-            
+
             if (toolWindow == null) {
                 logger.warn("Terminal tool window does not exist")
                 return
             }
-            
+
             // Use TerminalToolWindowManager's newTab method to create new Content
             val content = terminalToolWindowManager.newTab(toolWindow, terminalWidget!!)
             content.displayName = config.name ?: DEFAULT_TERMINAL_NAME
-            
+
             logger.info("✅ Added terminalWidget to Terminal tool window: ${content.displayName}")
         } catch (e: Exception) {
             logger.error("❌ Failed to add terminalWidget to tool window", e)
@@ -544,7 +615,7 @@ class TerminalInstance(
         try {
             // 🎯 Mark as disposed first to avoid repeated calls in callbacks
             state.markDisposed()
-            
+
             callbackManager.clear()
             scope.cancel()
 

@@ -1,0 +1,125 @@
+name: JetBrains plugin pull request checks
+
+on:
+  pull_request:
+    paths:
+      - "jetbrains_plugin/**"
+      - ".github/workflows/pr.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jetbrains-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Connector tests, build, and 2026.3 compatibility gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Check out the JetBrains plugin
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      # One source of truth: the build number and the pinned archive digest
+      # live in jetbrains_plugin/gradle.properties, next to each other.
+      - name: Read the centralized verification IDE values
+        shell: bash
+        run: |
+          build="$(sed -n 's/^idea263Build=//p' jetbrains_plugin/gradle.properties)"
+          digest="$(sed -n 's/^idea263Sha256=//p' jetbrains_plugin/gradle.properties)"
+          if [ -z "$build" ] || [ -z "$digest" ]; then
+            echo "idea263Build or idea263Sha256 is missing from jetbrains_plugin/gradle.properties."
+            exit 1
+          fi
+          echo "IDEA_263_BUILD=$build" >> "$GITHUB_ENV"
+          echo "IDEA_263_SHA256=$digest" >> "$GITHUB_ENV"
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Restore the cached 2026.3 verification IDE
+        id: idea263-cache
+        uses: actions/cache@v4
+        with:
+          path: jetbrains_plugin/build/ideaIC-*
+          key: ideaIC-263-${{ env.IDEA_263_SHA256 }}
+
+      # The same pinned download as release.yml: the exact IC-<build> EAP
+      # archive is fetched from the IntelliJ snapshots repository, checked
+      # against the SHA-256 from gradle.properties, and unpacked once.
+      - name: Download and unpack the 2026.3 verification IDE
+        working-directory: jetbrains_plugin
+        shell: bash
+        run: |
+          ide_zip="build/ideaIC-${IDEA_263_BUILD}.zip"
+          ide_dir="build/ideaIC-${IDEA_263_BUILD}"
+          # build/ is gitignored, so a fresh checkout has no build directory.
+          # Create it before curl writes the archive.
+          mkdir -p build
+          if [ -d "$ide_dir/bin" ]; then
+            echo "Using cached $ide_dir"
+            exit 0
+          fi
+          curl --fail --silent --show-error --retry 3 --location -o "$ide_zip" \
+            "https://www.jetbrains.com/intellij-repository/snapshots/com/jetbrains/intellij/idea/ideaIC/${IDEA_263_BUILD}-EAP-SNAPSHOT/ideaIC-${IDEA_263_BUILD}-EAP-SNAPSHOT.zip"
+          echo "${IDEA_263_SHA256}  ${ide_zip}" | sha256sum --check --status || {
+            echo "Downloaded ideaIC-${IDEA_263_BUILD}.zip does not match the pinned SHA-256 ${IDEA_263_SHA256}."
+            exit 1
+          }
+          unzip -q "$ide_zip" -d "$ide_dir"
+
+      # prepareSandbox copies the extension-host payload into the sandbox. The
+      # pull-request gates verify the plugin bytecode and do not need that
+      # payload, so the two required input paths are created empty.
+      - name: Create the sandbox input paths the Gradle build needs
+        working-directory: jetbrains_plugin
+        shell: bash
+        run: |
+          mkdir -p plugins/zoo-code/extension
+          touch plugins/zoo-code/extension/.keep prodDep.txt
+
+      # The connector tests are pure JVM tests and the focus of these gates.
+      # The platform-fixture tests need a display and the extension payload,
+      # which a pull-request build does not assemble.
+      - name: Run the connector tests
+        working-directory: jetbrains_plugin
+        shell: bash
+        run: >
+          ./gradlew test
+          --tests "org.zoocode.jetbrains.terminal.RawOutputTtyConnectorTest"
+          --no-configuration-cache
+
+      - name: Build the plugin
+        working-directory: jetbrains_plugin
+        shell: bash
+        run: ./gradlew buildPlugin --no-configuration-cache
+
+      - name: Reject packaged references to the 2026.3-removed terminal API
+        working-directory: jetbrains_plugin
+        shell: bash
+        run: ./gradlew verifyPackagedBytecode --no-configuration-cache
+
+      - name: Verify plugin compatibility with the exact IDEA 2026.3 build
+        working-directory: jetbrains_plugin
+        shell: bash
+        run: >
+          ./gradlew runPluginVerifier
+          -PverifierLocalIde="build/ideaIC-${IDEA_263_BUILD}"
+          --no-configuration-cache
+
+      - name: Smoke check the 2026.3 createTtyConnector dispatch
+        working-directory: jetbrains_plugin
+        shell: bash
+        run: >
+          ./gradlew smoke263Dispatch
+          -PsmokeLocalIde="build/ideaIC-${IDEA_263_BUILD}"
+          --no-configuration-cache
