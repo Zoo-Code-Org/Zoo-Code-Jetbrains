@@ -120,8 +120,12 @@ SPDX-License-Identifier: Apache-2.0
          Read more: https://plugins.jetbrains.com/docs/intellij/plugin-compatibility.html -->
     <depends>com.intellij.modules.platform</depends>
     <!-- JCEF moved from the platform classloader into this bundled plugin in 2026.2 (build 262).
-         Keep the dependency optional because older supported IDEs expose JCEF directly from the platform. -->
-    <depends optional="true">com.intellij.modules.jcef</depends>
+         The id com.intellij.modules.jcef is the JCEF plugin id there and no module at all
+         before 262, so the dependency must stay optional. An optional depends requires a
+         companion config-file descriptor; it stays empty because no extension point of this
+         plugin depends on the JCEF plugin, and moving extensions here would hide them from
+         every IDE below 262, where the dependency never resolves. -->
+    <depends optional="true" config-file="ZooCode-jcef.xml">com.intellij.modules.jcef</depends>
     <depends>org.jetbrains.plugins.terminal</depends>
     
     <!-- Extension points defined by the plugin.
