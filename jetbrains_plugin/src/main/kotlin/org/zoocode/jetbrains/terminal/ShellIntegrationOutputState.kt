@@ -14,6 +14,7 @@ import java.util.concurrent.atomic.AtomicLong
  * Shell integration event types
  */
 sealed class ShellEvent {
+    object ShellIntegrationReady : ShellEvent()
     data class ShellExecutionStart(val commandLine: String, val cwd: String) : ShellEvent()
     data class ShellExecutionEnd(val commandLine: String, val exitCode: Int?) : ShellEvent()
     data class ShellExecutionData(val data: String) : ShellEvent()
@@ -24,6 +25,7 @@ sealed class ShellEvent {
  * Shell integration event listener
  */
 interface ShellEventListener {
+    fun onShellIntegrationReady() = Unit
     fun onShellExecutionStart(commandLine: String, cwd: String)
     fun onShellExecutionEnd(commandLine: String, exitCode: Int?)
     fun onShellExecutionData(data: String)
@@ -74,6 +76,8 @@ class ShellIntegrationOutputState {
     
     // Coroutine scope
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private var pendingRawOutput = ""
+    private var integrationReady = false
     
     /**
      * Add event listener
@@ -101,6 +105,7 @@ class ShellIntegrationOutputState {
             listeners.forEach { listener ->
                 try {
                     when (event) {
+                        ShellEvent.ShellIntegrationReady -> listener.onShellIntegrationReady()
                         is ShellEvent.ShellExecutionStart ->
                             listener.onShellExecutionStart(event.commandLine, event.cwd)
                         is ShellEvent.ShellExecutionEnd ->
@@ -192,7 +197,10 @@ class ShellIntegrationOutputState {
      * Process raw output data
      * Parse Shell Integration markers and extract clean content
      */
-    fun appendRawOutput(output: String) {
+    @Synchronized
+    fun appendRawOutput(chunk: String) {
+        val output = pendingRawOutput + chunk
+        pendingRawOutput = ""
         logger.debug("📥 Processing raw output: ${output.length} chars, isCommandRunning=$isCommandRunning")
         logger.debug("📥 Raw output content: '${output.replace("\u001b", "\\u001b").replace("\u0007", "\\u0007")}'")
         
@@ -205,7 +213,13 @@ class ShellIntegrationOutputState {
             
             if (markerIndex == -1) {
                 // No marker found
-                val remainingContent = output.substring(currentIndex)
+                val remaining = output.substring(currentIndex)
+                val prefix = "\u001b]633;"
+                val partialLength = (1 until prefix.length).lastOrNull {
+                    remaining.endsWith(prefix.take(it))
+                } ?: 0
+                pendingRawOutput = remaining.takeLast(partialLength)
+                val remainingContent = remaining.dropLast(partialLength)
                 logger.debug("📤 No Shell Integration marker found, remaining content: '${remainingContent}', isCommandRunning=$isCommandRunning")
                 
                 if (!hasShellIntegrationMarkers && remainingContent.isNotEmpty()) {
@@ -236,9 +250,7 @@ class ShellIntegrationOutputState {
             // Parse marker
             val typeStart = markerIndex + 6 // "\u001b]633;".length
             if (typeStart >= output.length) {
-                if (isCommandRunning && currentIndex < output.length) {
-                    appendOutput(output.substring(currentIndex))
-                }
+                pendingRawOutput = output.substring(markerIndex)
                 break
             }
             
@@ -248,9 +260,8 @@ class ShellIntegrationOutputState {
             // Find marker end: \u0007
             val paramEnd = output.indexOf('\u0007', paramStart)
             if (paramEnd == -1) {
-                logger.debug("⚠️ Marker end not found, skip")
-                currentIndex = typeStart
-                continue
+                pendingRawOutput = output.substring(markerIndex)
+                break
             }
             
             // Extract parameters
@@ -273,7 +284,7 @@ class ShellIntegrationOutputState {
                 MarkerType.COMMAND_LINE -> {
                     logger.info("🎯 Shell Integration - Detected command line marker")
                     if (components.isNotEmpty() && components[0].isNotEmpty()) {
-                        currentCommand = components[0]
+                        currentCommand = decodeMarkerValue(components[0])
                         currentNonce = if (components.size >= 2) components[1] else ""
                         logger.info("🎯 Shell Integration - Command line: '$currentCommand'")
                     }
@@ -310,7 +321,7 @@ class ShellIntegrationOutputState {
                     if (components.isNotEmpty()) {
                         val property = components[0]
                         if (property.startsWith("Cwd=")) {
-                            val cwdValue = property.substring(4) // "Cwd=".length
+                            val cwdValue = decodeMarkerValue(property.substring(4))
                             if (cwdValue != currentDirectory) {
                                 currentDirectory = cwdValue
                                 logger.info("📁 Shell Integration - Directory changed: '$cwdValue'")
@@ -325,6 +336,10 @@ class ShellIntegrationOutputState {
                 }
                 
                 MarkerType.COMMAND_START -> {
+                    if (!integrationReady) {
+                        integrationReady = true
+                        notifyListeners(ShellEvent.ShellIntegrationReady)
+                    }
                     logger.debug("🎯 Shell Integration - Command input start")
                 }
                 
@@ -334,6 +349,17 @@ class ShellIntegrationOutputState {
             }
             
             currentIndex = paramEnd + 1
+        }
+    }
+
+    internal fun decodeMarkerValue(value: String): String {
+        return Regex("(?:\\\\x[0-9a-fA-F]{2})+|\\\\\\\\").replace(value) { match ->
+            if (match.value == "\\\\") {
+                "\\"
+            } else {
+                val bytes = match.value.chunked(4).map { it.substring(2).toInt(16).toByte() }.toByteArray()
+                bytes.toString(Charsets.UTF_8)
+            }
         }
     }
     
@@ -391,4 +417,4 @@ class ShellIntegrationOutputState {
             }
         }
     }
-} 
+}

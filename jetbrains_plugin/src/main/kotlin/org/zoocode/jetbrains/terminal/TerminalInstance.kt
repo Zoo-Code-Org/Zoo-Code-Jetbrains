@@ -74,7 +74,11 @@ class TerminalInstance(
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     // Shell integration manager
-    private val terminalShellIntegration = TerminalShellIntegration(extHostTerminalId, numericId, rpcProtocol)
+    private val terminalShellIntegration = TerminalShellIntegration(extHostTerminalId, numericId, rpcProtocol) {
+        ApplicationManager.getApplication().invokeLater {
+            if (state.canOperate()) notifyShellIntegrationChange()
+        }
+    }
 
     // Event callback manager
     private val callbackManager = TerminalCallbackManager()
@@ -130,8 +134,8 @@ class TerminalInstance(
      */
     private fun performInitialization() {
         try {
-            createTerminalWidget()
             setupShellIntegration()
+            createTerminalWidget()
             finalizeInitialization()
         } catch (e: Exception) {
             logger.error("❌ Failed to initialize terminal in EDT thread: $extHostTerminalId", e)
@@ -157,7 +161,6 @@ class TerminalInstance(
         addToTerminalToolWindow()
 
         notifyTerminalOpened()
-        notifyShellIntegrationChange()
         handleInitialText()
     }
 
@@ -482,12 +485,19 @@ class TerminalInstance(
      * Send text to terminal
      */
     fun sendText(text: String, shouldExecute: Boolean = false) {
-        if (!state.canOperate()) {
-            logger.warn("Terminal not initialized or disposed, cannot send text: $extHostTerminalId")
-            return
+        if (shouldExecute) {
+            terminalShellIntegration.whenReady { sendReadyText(text, true) }
+        } else {
+            sendReadyText(text, false)
         }
+    }
 
+    private fun sendReadyText(text: String, shouldExecute: Boolean) {
         ApplicationManager.getApplication().invokeLater {
+            if (!state.canOperate()) {
+                logger.warn("Terminal not initialized or disposed, cannot send text: $extHostTerminalId")
+                return@invokeLater
+            }
             try {
                 val shell = shellWidget ?: return@invokeLater
 

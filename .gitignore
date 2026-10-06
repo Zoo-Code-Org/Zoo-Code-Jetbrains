@@ -52,6 +52,7 @@ deps/vscode/*
 jetbrains_plugin/plugins
 jetbrains_plugin/build
 .gradle
+/.gradle-user-home/
 deps/vsix/package/*
 deps/vsix/plugin/*
 -e 

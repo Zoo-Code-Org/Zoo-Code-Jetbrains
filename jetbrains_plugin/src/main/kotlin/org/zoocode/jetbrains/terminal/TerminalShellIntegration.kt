@@ -20,7 +20,8 @@ import org.zoocode.jetbrains.util.URI
 class TerminalShellIntegration(
     private val extHostTerminalId: String,
     private val numericId: Int,
-    private val rpcProtocol: IRPCProtocol
+    private val rpcProtocol: IRPCProtocol,
+    private val onReady: () -> Unit = {}
 ) {
     
     companion object {
@@ -39,6 +40,21 @@ class TerminalShellIntegration(
     private val logger = Logger.getInstance(TerminalShellIntegration::class.java)
     private var shellIntegrationState: ShellIntegrationOutputState? = null
     private var shellEventListener: ShellEventListener? = null
+    private val readinessLock = Any()
+    private var ready = false
+    private var disposed = false
+    private val pendingCommands = mutableListOf<() -> Unit>()
+
+    fun whenReady(command: () -> Unit) {
+        synchronized(readinessLock) {
+            if (disposed) return
+            if (!ready) {
+                pendingCommands.add(command)
+                return
+            }
+        }
+        command()
+    }
     
     /**
      * Lazy delegate for getting ExtHost terminal shell integration proxy
@@ -68,6 +84,10 @@ class TerminalShellIntegration(
      * Dispose shell integration and release related resources
      */
     fun dispose() {
+        synchronized(readinessLock) {
+            disposed = true
+            pendingCommands.clear()
+        }
         logger.info("$LOG_PREFIX_DISPOSE Disposing shell integration: $extHostTerminalId")
         
         runCatching {
@@ -127,6 +147,15 @@ class TerminalShellIntegration(
      * Handles various shell command execution events
      */
     private inner class TerminalShellEventListener : ShellEventListener {
+        override fun onShellIntegrationReady() {
+            val commands = synchronized(readinessLock) {
+                if (disposed || ready) return
+                ready = true
+                pendingCommands.toList().also { pendingCommands.clear() }
+            }
+            onReady()
+            commands.forEach { it() }
+        }
         
         override fun onShellExecutionStart(commandLine: String, cwd: String) {
             logger.info("$LOG_PREFIX_START Command execution started: '$commandLine' in directory '$cwd' (terminal: $extHostTerminalId)")
@@ -179,4 +208,4 @@ class TerminalShellIntegration(
             }
         }
     }
-} 
+}

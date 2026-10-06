@@ -5,15 +5,15 @@
 
 # Add debug output
 if ($env:WECODER_SHELL_INTEGRATION -eq "1") {
-	Write-Host "🚀 WeCoder PowerShell Shell Integration Loading..." -ForegroundColor Green
-	Write-Host "📁 Script Path: $($env:WECODER_SCRIPT_PATH)" -ForegroundColor Yellow
-	Write-Host "🔑 Nonce: $($env:VSCODE_NONCE)" -ForegroundColor Yellow
+	Write-Host " WeCoder PowerShell Shell Integration Loading..." -ForegroundColor Green
+	Write-Host " Script Path: $($env:WECODER_SCRIPT_PATH)" -ForegroundColor Yellow
+	Write-Host " Nonce: $($env:VSCODE_NONCE)" -ForegroundColor Yellow
 }
 
 # Prevent installing more than once per session
 if (Test-Path variable:global:__VSCodeOriginalPrompt) {
 	if ($env:WECODER_SHELL_INTEGRATION -eq "1") {
-		Write-Host "⚠️ Shell integration already loaded, skipping..." -ForegroundColor Yellow
+		Write-Host " Shell integration already loaded, skipping..." -ForegroundColor Yellow
 	}
 	return;
 }
@@ -21,11 +21,11 @@ if (Test-Path variable:global:__VSCodeOriginalPrompt) {
 # Disable shell integration when the language mode is restricted
 if ($ExecutionContext.SessionState.LanguageMode -ne "FullLanguage") {
 	if ($env:WECODER_SHELL_INTEGRATION -eq "1") {
-		Write-Host "❌ Shell integration disabled due to restricted language mode" -ForegroundColor Red
+		Write-Host " Shell integration disabled due to restricted language mode" -ForegroundColor Red
 		# Automatically run diagnostic script
 		$diagnosePath = Join-Path (Split-Path $env:WECODER_SCRIPT_PATH -Parent) "diagnose.ps1"
 		if (Test-Path $diagnosePath) {
-			Write-Host "🔍 Running diagnostic script..." -ForegroundColor Yellow
+			Write-Host " Running diagnostic script..." -ForegroundColor Yellow
 			& $diagnosePath
 		}
 	}
@@ -47,7 +47,7 @@ $Global:__LastHistoryId = -1
 $Global:__VSCodeIsInExecution = $false
 
 # Store the nonce in script scope and unset the global
-$Nonce = $env:VSCODE_NONCE
+$Global:__VSCodeNonce = $env:VSCODE_NONCE
 $env:VSCODE_NONCE = $null
 
 $__vscode_shell_env_reporting = $env:VSCODE_SHELL_ENV_REPORTING
@@ -55,7 +55,9 @@ $env:VSCODE_SHELL_ENV_REPORTING = $null
 
 function Global:__VSCode-Escape-Value([string]$value) {
 	# Replace any non-alphanumeric characters.
-	[regex]::Replace($value, "[$([char]0x00)-$([char]0x1f)\\\n;]", { param($match)
+	# Console.Write may use an OEM code page on Windows PowerShell 5.1.
+	# Escape Unicode as UTF-8 bytes so protocol markers remain ASCII.
+	[regex]::Replace($value, "[$([char]0x00)-$([char]0x1f)\\\n;\u007f-\uffff]+", { param($match)
 		# Encode the (ascii) matches as `\x<hex>`
 		-Join (
 			[System.Text.Encoding]::UTF8.GetBytes($match.Value) | ForEach-Object { '\x{0:x2}' -f $_ }
@@ -65,6 +67,10 @@ function Global:__VSCode-Escape-Value([string]$value) {
 
 function Global:Prompt() {
 	$FakeCode = [int]!$global:?
+	# Preserve native failures; a successful command must not reuse a stale code.
+	if ($FakeCode -ne 0 -and $global:LASTEXITCODE) {
+		$FakeCode = $global:LASTEXITCODE
+	}
 	Set-StrictMode -Off
 	$LastHistoryEntry = Get-History -Count 1
 	$Result = ""
@@ -127,18 +133,25 @@ if ($PSVersionTable.PSVersion -lt "6.0") {
 	[Console]::Write($winSeq)
 }
 
+# -File startup can run before PowerShell automatically loads PSReadLine.
+if (-not (Get-Module -Name PSReadLine)) {
+	Import-Module PSReadLine -ErrorAction SilentlyContinue
+}
+
 # Only send the command executed sequence when PSReadLine is loaded
 if (Get-Module -Name PSReadLine) {
 	$richSeq = "${esc}]633;P;HasRichCommandDetection=True${bell}"
 	[Console]::Write($richSeq)
 
-	$__VSCodeOriginalPSConsoleHostReadLine = $function:PSConsoleHostReadLine
+	$Global:__VSCodeOriginalPSConsoleHostReadLine = $function:PSConsoleHostReadLine
 	function Global:PSConsoleHostReadLine {
-		$CommandLine = $__VSCodeOriginalPSConsoleHostReadLine.Invoke()
+		$CommandLine = $Global:__VSCodeOriginalPSConsoleHostReadLine.Invoke()
 		$Global:__VSCodeIsInExecution = $true
+		$esc = [char]0x1b
+		$bell = [char]0x07
 
 		# Command line
-		$Result = $esc + "]633;E;" + $(__VSCode-Escape-Value $CommandLine) + ";" + $Nonce + $bell
+		$Result = $esc + "]633;E;" + $(__VSCode-Escape-Value $CommandLine) + ";" + $Global:__VSCodeNonce + $bell
 
 		# Command executed
 		$Result += $esc + "]633;C" + $bell
@@ -156,30 +169,30 @@ if ($env:WECODER_SHELL_INTEGRATION -eq "1") {
 	$shellIntegrationOk = $true
 	
 	# Check if required variables exist
-	if (-not $Nonce) {
-		Write-Host "⚠️ Warning: VSCODE_NONCE is not set correctly" -ForegroundColor Yellow
+	if (-not $Global:__VSCodeNonce) {
+		Write-Host " Warning: VSCODE_NONCE is not set correctly" -ForegroundColor Yellow
 		$shellIntegrationOk = $false
 	}
 	
 	# Check if Prompt function is correctly defined
 	if (-not (Test-Path function:Global:Prompt)) {
-		Write-Host "⚠️ Warning: Global:Prompt function is not correctly defined" -ForegroundColor Yellow
+		Write-Host " Warning: Global:Prompt function is not correctly defined" -ForegroundColor Yellow
 		$shellIntegrationOk = $false
 	}
 	
 	# Check PSReadLine
 	if (-not (Get-Module -Name PSReadLine)) {
-		Write-Host "⚠️ Warning: PSReadLine module is not loaded, some features may be unavailable" -ForegroundColor Yellow
+		Write-Host " Warning: PSReadLine module is not loaded, some features may be unavailable" -ForegroundColor Yellow
 	}
 	
 	if ($shellIntegrationOk) {
-		Write-Host "✅ WeCoder PowerShell Shell Integration loaded successfully!" -ForegroundColor Green
+		Write-Host " WeCoder PowerShell Shell Integration loaded successfully!" -ForegroundColor Green
 	} else {
-		Write-Host "❌ WeCoder PowerShell Shell Integration encountered issues during loading" -ForegroundColor Red
+		Write-Host " WeCoder PowerShell Shell Integration encountered issues during loading" -ForegroundColor Red
 		# Automatically run diagnostic script
 		$diagnosePath = Join-Path (Split-Path $env:WECODER_SCRIPT_PATH -Parent) "diagnose.ps1"
 		if (Test-Path $diagnosePath) {
-			Write-Host "🔍 Automatically running diagnostic script..." -ForegroundColor Yellow
+			Write-Host " Automatically running diagnostic script..." -ForegroundColor Yellow
 			& $diagnosePath
 		}
 	}
@@ -187,4 +200,4 @@ if ($env:WECODER_SHELL_INTEGRATION -eq "1") {
 	# Clean up debug environment variables
 	$env:WECODER_SHELL_INTEGRATION = $null
 	$env:WECODER_SCRIPT_PATH = $null
-} 
+}

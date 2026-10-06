@@ -525,13 +525,14 @@ class WecoderPluginService(private var currentProject: Project) : Disposable {
         
         LOG.info("Disposing WecoderPluginService")
 
-        currentProject.getService(WebViewManager::class.java)?.dispose()
-        
-        // Cancel all coroutines
-        coroutineScope.cancel()
-        
-        // Clean up resources
-        cleanup()
+        try {
+            currentProject.getService(WebViewManager::class.java)?.dispose()
+        } catch (e: Exception) {
+            LOG.warn("Error disposing web view during shutdown", e)
+        } finally {
+            coroutineScope.cancel()
+            cleanup()
+        }
         
         LOG.info("WecoderPluginService disposed")
     }

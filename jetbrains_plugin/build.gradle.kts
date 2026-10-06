@@ -154,7 +154,7 @@ fun Sync.prepareSandbox() {
     }
     depfile.readLines().let {
         it.forEach { line ->
-            depPatterns.add(line.substringAfterLast("node_modules/") + "/**")
+            depPatterns.add(line.replace('\\', '/').substringAfterLast("node_modules/") + "/**")
         }
     }
 
