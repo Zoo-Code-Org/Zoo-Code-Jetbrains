@@ -26,48 +26,31 @@ coverage is narrower: several commands inside one live process session, and
 repeated fresh sessions. The CI job never reuses a terminal session inside the
 IDE, so the two reuse claims are not interchangeable.
 
-## Windows CI validation (first run recorded, interrupt unresolved)
-
-The first hosted Windows run failed on the ETX interrupt test. The other five
-`WindowsConPtyProcessTest` tests passed.
-
-- Run: <https://github.com/Zoo-Code-Org/Zoo-Code-Jetbrains/actions/runs/37875942108>
-  (pull request #10, `fix-intelliJ-compatibility`, `windows-verify` job)
-- Tested commit: `12141c5b35b2e314bdc4e8366b435feef017be9c`; the pull request
-  merge commit recorded by the job, not the branch head
-- Identity output: checkout `D:\a\Zoo-Code-Jetbrains\Zoo-Code-Jetbrains`,
-  OS `windows-latest`, JDK temurin 17
-- Result: 5 of 6 ConPTY tests passed. Unicode execution, exact exit code,
-  resize, five repeated fresh startups, and bounded close passed. The test
-  `conPty interrupt byte stops the running pipeline and the shell survives`
-  failed at the wait for output after the interrupt: after `interrupt-armed`
-  and the ETX byte, the shell produced no prompt and no further output
-  within 20s.
-- Observed shell setup: interactive Windows PowerShell 5.1 under ConPTY with
-  PSReadLine active. The failure snapshot shows PSReadLine syntax-highlight
-  escape sequences and the default `PS C:\Users\runneradmin\AppData\Local\Temp>`
-  prompt.
-- Unresolved: whether the ETX byte reaches PowerShell as a console control
-  event in this ConPTY harness. The recorded snapshot cannot separate "the
-  interrupt was not delivered" from "the interrupt was delivered but the
-  follow-up command was discarded", because the test sent the next command
-  immediately after the ETX byte.
-- Correction on this branch: the test now installs a counted prompt sentinel
-  (`zp<N>`) before the interrupt and waits for a prompt generation newer than
-  the last pre-interrupt one before it sends the next command. If no prompt
-  returns within 20s, the test fails and records that the interrupt did not
-  work; the assertion is not weakened and the test is not skipped.
-- The PowerShell 5.1 smoke step was skipped in this run because it had no
-  execution condition. It now runs whenever the job is not cancelled, so a
-  failed test step no longer removes the smoke evidence.
-- Artifact: `windows-pr-results-12141c5b35b2e314bdc4e8366b435feef017be9c-windows-latest-jdk17`
+## Windows CI validation (passed 2026-10-09)
 
 The `windows-verify` job in [`.github/workflows/pr.yml`](../.github/workflows/pr.yml)
-records this identity on each run and uploads it as an artifact:
+runs on every pull request. Hosted run logs and artifacts expire, so this
+document records the result and not a run link. The job is the living evidence.
+
+- Date: 2026-10-09
+- Branch head: `97070c9` on `fix-intelliJ-compatibility` (pull request #10)
+- Runner: `windows-latest`, JDK temurin 17
+- Result: 6 of 6 `WindowsConPtyProcessTest` tests passed on the ConPTY
+  backend. None were skipped. Unicode execution, exact exit code, resize,
+  Ctrl+C/ETX interrupt, five repeated fresh startups, and bounded close all
+  passed.
+- The PowerShell 5.1 smoke script passed.
+
+History: an earlier run failed the interrupt test. The test sent the next
+command right after the ETX byte, and no prompt returned. The test now installs
+a counted prompt (`zp<N>`) and waits for a new prompt before the next command.
+The interrupt then passed, so the ETX byte does reach the shell in this harness.
+
+Each run records its own identity and uploads it as an artifact:
 
 - `Checkout: $env:GITHUB_WORKSPACE`
-- `Tested commit: $(git rev-parse HEAD)`; a pull request job can test a merge commit,
-  so the recorded value is the validated commit, not the branch head
+- `Tested commit: $(git rev-parse HEAD)`; a pull request job can test a merge
+  commit, so this value can differ from the branch head
 - `Run: $env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID`
 
 ## Automated runner coverage
@@ -109,20 +92,17 @@ not real IDE workspace-close tests.
 
 | Item | Runner coverage | Real IDE evidence |
 | --- | --- | --- |
-| Input execution, Unicode, exact exit codes, five fresh startups | Added, first run pending | Reported for `05dea49` |
-| Multi-command execution inside one live process session | Added, first run pending | None |
+| Input execution, Unicode, exact exit codes, five fresh startups | Passed 2026-10-09 | Reported for `05dea49` |
+| Multi-command execution inside one live process session | Passed 2026-10-09 | None |
 | Connector reuse in a real IDE session | None; out of CI scope | Reported for `05dea49` |
-| Resize | Process-level test added, first run pending | None |
-| Ctrl+C / ETX pipeline interrupt | Unresolved: the first hosted run (37875942108) observed no post-interrupt prompt; the new prompt-observation diagnostic separates a missing interrupt from a lost follow-up command on the next run | None |
+| Resize | Passed 2026-10-09 | None |
+| Ctrl+C / ETX pipeline interrupt | Passed 2026-10-09: the shell returns to a new prompt after ETX | None |
 | Interactive input | Process-level input only | None |
 | Workspace-close cleanup | None | None |
 | 263 JCEF matching native bundle | None | None; known gap |
 
 ## Local validation
 
-No Windows executor exists in the local Linux workspace, so the Windows job stays
-pending until the next hosted run. For the interrupt-diagnostic change, the local
-Linux checks ran clean: the six filtered test classes from the `verify` job passed
-with 29 tests, and actionlint 1.7.7 reported no findings for `pr.yml` and
-`release.yml`. The interrupt test itself needs the hosted Windows runner; the ETX
-interrupt question stays open until that run.
+No Windows executor exists in the local Linux workspace. Windows results come
+from the hosted job only. The Linux job runs the same test classes, and the
+Windows-only tests skip there.
