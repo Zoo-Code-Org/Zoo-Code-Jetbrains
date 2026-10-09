@@ -20,18 +20,18 @@ Android Studio's default startup runtime does not include JCEF capabilities, req
 1. **Download a JCEF-Compatible JetBrains Runtime**
 
    Download a JetBrains Runtime (JBR) with JCEF support:
-   
+
    👉 https://github.com/JetBrains/JetBrainsRuntime/releases
-   
+
    Choose a release with:
    - `jbr_jcef` in the name
    - Correct architecture (osx-aarch64, linux-x64, or windows-x64)
-   
+
    Example:
    ```
    jbr_jcef-17.0.11-osx-aarch64-b1063.2.tar.gz
    ```
-   
+
    Unpack it somewhere, e.g.:
    ```
    ~/jbr/jbr_jcef
@@ -47,15 +47,15 @@ Android Studio's default startup runtime does not include JCEF capabilities, req
    4. Select it and choose the folder where you extracted the JBR (e.g., ~/jbr/jbr_jcef).
 
 3. **Restart Android Studio**
-   
+
    After selecting the new runtime, Android Studio will prompt you to restart. Confirm, and it will relaunch with the new runtime.
 
 4. **Verify the Runtime**
-   
+
    Go to Help → About to confirm the IDE is now running with the new JBR. The version should indicate JCEF support (e.g., JetBrains Runtime jbr-17.0.11+7-b1238.56-jcef).
 
 5. **Revert if Needed**
-   
+
    You can always use the same "Choose Boot Java Runtime for the IDE" action to switch back to the default runtime if needed.
 
 ##### Method 2: Using Edit Custom VM Options
@@ -90,6 +90,27 @@ On Linux ARM platforms, JCEF may fail to initialize native processes properly, l
 
 #### Solutions
 No solution available at this time.
+
+### 1.3 JCEF Is Not Available on IDE 2026.2 or Newer
+
+#### Problem Description
+
+From IntelliJ Platform 2026.2 (build 262), JetBrains packages JCEF as a separate bundled plugin with the id `com.intellij.modules.jcef`. JCEF is no longer part of the IDE platform. When this bundled plugin is not present, the Zoo Code view cannot render.
+
+#### Behavior
+
+The plugin does not crash. It logs the reason and shows a warning notification. The Zoo Code tool window stays empty. The IDE log shows the state in the startup line `JCEF: CLASSES_MISSING`.
+
+#### Affected Platforms
+- IDEs based on IntelliJ Platform build 262 or newer without the bundled JCEF plugin
+
+#### Solutions
+
+1. Open **Settings → Plugins → Installed** and search for **JCEF**.
+2. Enable the bundled JCEF plugin if it is disabled.
+3. Restart the IDE.
+
+If the bundled JCEF plugin is not in the list, this IDE build does not ship JCEF, and the Zoo Code view cannot run in it. IDEs older than 2026.2 get JCEF from the runtime; see section 1.1.
 
 ---
 

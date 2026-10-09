@@ -5,7 +5,6 @@
 package org.zoocode.jetbrains.terminal
 
 import com.intellij.execution.ExecutionException
-import com.intellij.execution.process.LocalPtyOptions
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
@@ -75,7 +74,11 @@ class TerminalInstance(
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     // Shell integration manager
-    private val terminalShellIntegration = TerminalShellIntegration(extHostTerminalId, numericId, rpcProtocol)
+    private val terminalShellIntegration = TerminalShellIntegration(extHostTerminalId, numericId, rpcProtocol) {
+        ApplicationManager.getApplication().invokeLater {
+            if (state.canOperate()) notifyShellIntegrationChange()
+        }
+    }
 
     // Event callback manager
     private val callbackManager = TerminalCallbackManager()
@@ -131,8 +134,8 @@ class TerminalInstance(
      */
     private fun performInitialization() {
         try {
-            createTerminalWidget()
             setupShellIntegration()
+            createTerminalWidget()
             finalizeInitialization()
         } catch (e: Exception) {
             logger.error("❌ Failed to initialize terminal in EDT thread: $extHostTerminalId", e)
@@ -158,7 +161,6 @@ class TerminalInstance(
         addToTerminalToolWindow()
 
         notifyTerminalOpened()
-        notifyShellIntegrationChange()
         handleInitialText()
     }
 
@@ -279,12 +281,13 @@ class TerminalInstance(
         logger.info("🔧 Starting PTY process: command=$command, cwd=$workingDirectory")
 
         try {
-            val builder = PtyProcessBuilder(command.toTypedArray())
-                .setEnvironment(options.envVariables)
-                .setDirectory(workingDirectory)
-                .setInitialColumns(initialTermSize?.columns)
-                .setInitialRows(initialTermSize?.rows)
-                .setUseWinConPty(LocalPtyOptions.shouldUseWinConPty())
+            val builder = TerminalPtyBuilder.configure(
+                command.toTypedArray(),
+                options.envVariables,
+                workingDirectory,
+                initialTermSize?.columns,
+                initialTermSize?.rows
+            )
             val process = builder.start()
             logger.info("✅ PTY process created: ${process.javaClass.name}")
             return process
@@ -482,12 +485,19 @@ class TerminalInstance(
      * Send text to terminal
      */
     fun sendText(text: String, shouldExecute: Boolean = false) {
-        if (!state.canOperate()) {
-            logger.warn("Terminal not initialized or disposed, cannot send text: $extHostTerminalId")
-            return
+        if (shouldExecute) {
+            terminalShellIntegration.whenReady { sendReadyText(text, true) }
+        } else {
+            sendReadyText(text, false)
         }
+    }
 
+    private fun sendReadyText(text: String, shouldExecute: Boolean) {
         ApplicationManager.getApplication().invokeLater {
+            if (!state.canOperate()) {
+                logger.warn("Terminal not initialized or disposed, cannot send text: $extHostTerminalId")
+                return@invokeLater
+            }
             try {
                 val shell = shellWidget ?: return@invokeLater
 
@@ -757,4 +767,35 @@ private class TerminalCallbackManager {
     fun clear() {
         terminalCloseCallbacks.clear()
     }
+}
+
+/**
+ * Builder policy for this plugin's PTY processes.
+ *
+ * ConPTY is requested explicitly through the public pty4j setter. This is a
+ * plugin decision: the platform accessor LocalPtyOptions is internal API
+ * since 2024.2, so one binary cannot read the user registry key
+ * terminal.use.conpty.on.windows the way the 2023.3 platform terminal did.
+ *
+ * Verified against the pty4j builds inside 2023.3 (lib/util.jar) and
+ * 2026.3 (intellij.libraries.pty4j.jar): PtyProcessBuilder.start reads the
+ * flag only on Windows, requests WinConPtyProcess for a non-console process,
+ * logs "Cannot create ConPTY process, fallback to winpty" and returns
+ * WinPtyProcess when the ConPTY native library fails to load
+ * (UnsatisfiedLinkError). Linux and macOS never read the flag.
+ */
+internal object TerminalPtyBuilder {
+    fun configure(
+        command: Array<String>,
+        environment: Map<String, String>,
+        workingDirectory: String,
+        initialColumns: Int?,
+        initialRows: Int?
+    ): PtyProcessBuilder =
+        PtyProcessBuilder(command)
+            .setEnvironment(environment)
+            .setDirectory(workingDirectory)
+            .setInitialColumns(initialColumns)
+            .setInitialRows(initialRows)
+            .setUseWinConPty(true)
 }

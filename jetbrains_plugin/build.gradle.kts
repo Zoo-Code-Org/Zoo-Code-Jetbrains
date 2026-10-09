@@ -154,7 +154,7 @@ fun Sync.prepareSandbox() {
     }
     depfile.readLines().let {
         it.forEach { line ->
-            depPatterns.add(line.substringAfterLast("node_modules/") + "/**")
+            depPatterns.add(line.replace('\\', '/').substringAfterLast("node_modules/") + "/**")
         }
     }
 
@@ -363,17 +363,29 @@ tasks {
     // linked against the 233 platform jars already on the compile classpath; this task
     // never needs the 2026.3 IDE. The scan target is the instrumented jar in the
     // sandbox, the exact bytes that the Plugin Verifier checks and that the published
-    // zip packages. The marker output makes the task up-to-date when the sandbox and
-    // the checker are unchanged.
+    // zip packages. The task first runs the checker --self-test, which feeds it
+    // synthetic clean and banned jars, so a scanner regression fails this task. The
+    // marker output makes the task up-to-date when the sandbox and the checker are
+    // unchanged.
     register("verifyPackagedBytecode") {
         group = "verification"
-        description = "Reject packaged references to terminal APIs removed in IntelliJ 2026.3"
+        description =
+            "Reject packaged references to terminal APIs removed in IntelliJ 2026.3 and to internal LocalPtyOptions API"
         val checker = layout.projectDirectory.file("smoke/Smoke263DispatchCheck.java")
         inputs.files(prepareSandbox.map { it.destinationDir })
         inputs.file(checker)
         outputs.file(layout.buildDirectory.file("verification/packaged-bytecode.ok"))
         dependsOn(prepareSandbox)
         doLast {
+            project.exec {
+                commandLine(
+                    verificationJavaLauncher.get().executablePath.asFile.absolutePath,
+                    "-cp",
+                    configurations.getByName("compileClasspath").asPath,
+                    checker.asFile.absolutePath,
+                    "--self-test",
+                )
+            }
             val pluginJar = packagedPluginJar()
             project.exec {
                 commandLine(

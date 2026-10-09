@@ -1,0 +1,14 @@
+<!--
+SPDX-FileCopyrightText: 2025 Weibo, Inc.
+
+SPDX-License-Identifier: Apache-2.0
+-->
+
+<!-- Companion descriptor for the optional com.intellij.modules.jcef dependency.
+     Loaded only on IDE builds where the dependency resolves (2026.2 and newer,
+     where com.intellij.modules.jcef is the id of the bundled JCEF plugin).
+     This plugin declares no extension points that depend on JCEF, so the file
+     stays intentionally empty; its presence satisfies the required config-file
+     attribute of the optional depends declaration in plugin.xml. -->
+<idea-plugin>
+</idea-plugin>

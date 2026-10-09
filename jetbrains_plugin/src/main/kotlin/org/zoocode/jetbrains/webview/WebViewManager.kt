@@ -17,6 +17,8 @@ import com.intellij.ui.jcef.JBCefBrowser
 import com.intellij.ui.jcef.JBCefJSQuery
 import org.zoocode.jetbrains.core.PluginContext
 import org.zoocode.jetbrains.core.ServiceProxyRegistry
+import org.zoocode.jetbrains.util.JcefSupport
+import org.zoocode.jetbrains.util.NotificationUtil
 import org.zoocode.jetbrains.events.WebviewHtmlUpdateData
 import org.zoocode.jetbrains.events.WebviewViewProviderData
 import org.zoocode.jetbrains.ipc.proxy.SerializableObjectWithBuffers
@@ -66,20 +68,20 @@ class WebViewManager(var project: Project) : Disposable, ThemeChangeListener {
     // Latest created WebView instance
     @Volatile
     private var latestWebView: WebViewInstance? = null
-    
+
     // Store WebView creation callbacks
     private val creationCallbacks = mutableListOf<WebViewCreationCallback>()
 
     // Resource root directory path
     @Volatile
     private var resourceRootDir: Path? = null
-    
+
     // Current theme configuration
     private var currentThemeConfig: JsonObject? = null
-    
+
     // Current theme type
     private var isDarkTheme: Boolean = true
-    
+
     // Prevent repeated dispose
     private var isDisposed = false
     private var themeInitialized = false
@@ -90,14 +92,14 @@ class WebViewManager(var project: Project) : Disposable, ThemeChangeListener {
      */
     fun initializeThemeManager(resourceRoot: String) {
         if (isDisposed or themeInitialized) return
-        
+
         logger.info("Initialize theme manager")
         val themeManager = ThemeManager.getInstance()
         themeManager.initialize(resourceRoot)
         themeManager.addThemeChangeListener(this)
         themeInitialized = true
     }
-    
+
     /**
      * Implement ThemeChangeListener interface, handle theme change events
      */
@@ -105,17 +107,17 @@ class WebViewManager(var project: Project) : Disposable, ThemeChangeListener {
         logger.info("Received theme change event, isDarkTheme: $isDarkTheme, config: ${themeConfig.size()}")
         this.currentThemeConfig = themeConfig
         this.isDarkTheme = isDarkTheme
-        
+
         // Send theme config to all WebView instances
         sendThemeConfigToWebViews(themeConfig)
     }
-    
+
     /**
      * Send theme config to all WebView instances
      */
     private fun sendThemeConfigToWebViews(themeConfig: JsonObject) {
         logger.info("Send theme config to WebView")
-        
+
 //        getAllWebViews().forEach { webView ->
             try {
                 getLatestWebView()?.sendThemeConfigToWebView(themeConfig)
@@ -124,7 +126,7 @@ class WebViewManager(var project: Project) : Disposable, ThemeChangeListener {
             }
 //        }
     }
-    
+
     /**
      * Save HTML content to resource directory
      * @param html HTML content
@@ -136,9 +138,9 @@ class WebViewManager(var project: Project) : Disposable, ThemeChangeListener {
             logger.warn("Resource root directory does not exist, cannot save HTML content")
             throw IOException("Resource root directory does not exist")
         }
-        
+
         val filePath = resourceRootDir?.resolve(filename)
-        
+
         try {
             if (filePath != null) {
                 logger.info("HTML content saved to: $filePath")
@@ -151,7 +153,7 @@ class WebViewManager(var project: Project) : Disposable, ThemeChangeListener {
             throw e
         }
     }
-    
+
     /**
      * Register WebView creation callback
      * @param callback Callback object
@@ -160,7 +162,7 @@ class WebViewManager(var project: Project) : Disposable, ThemeChangeListener {
     fun addCreationCallback(callback: WebViewCreationCallback, disposable: Disposable? = null) {
         synchronized(creationCallbacks) {
             creationCallbacks.add(callback)
-            
+
             // If Disposable is provided, automatically remove callback when disposed
             if (disposable != null) {
                 Disposer.register(disposable, Disposable {
@@ -168,7 +170,7 @@ class WebViewManager(var project: Project) : Disposable, ThemeChangeListener {
                 })
             }
         }
-        
+
         // If there is already a latest created WebView, notify immediately
         latestWebView?.let { webview ->
             ApplicationManager.getApplication().invokeLater {
@@ -176,7 +178,7 @@ class WebViewManager(var project: Project) : Disposable, ThemeChangeListener {
             }
         }
     }
-    
+
     /**
      * Remove WebView creation callback
      * @param callback Callback object to remove
@@ -186,7 +188,7 @@ class WebViewManager(var project: Project) : Disposable, ThemeChangeListener {
             creationCallbacks.remove(callback)
         }
     }
-    
+
     /**
      * Notify all callbacks that WebView has been created
      * @param instance Created WebView instance
@@ -195,7 +197,7 @@ class WebViewManager(var project: Project) : Disposable, ThemeChangeListener {
         val callbacks = synchronized(creationCallbacks) {
             creationCallbacks.toList() // Create a copy to avoid concurrent modification
         }
-        
+
         // Safely call callbacks in UI thread
         ApplicationManager.getApplication().invokeLater {
             callbacks.forEach { callback ->
@@ -207,33 +209,33 @@ class WebViewManager(var project: Project) : Disposable, ThemeChangeListener {
             }
         }
     }
-    
+
     /**
      * Register WebView provider and create WebView instance
      */
     fun registerProvider(data: WebviewViewProviderData) {
         logger.info("Register WebView provider and create WebView instance: ${data.viewType}")
         val extension = data.extension
-        
+
         // Get location info from extension and set resource root directory
         try {
             @Suppress("UNCHECKED_CAST")
             val location = extension?.get("location") as? Map<String, Any?>
             val fsPath = location?.get("fsPath") as? String
-            
+
             if (fsPath != null) {
                 // Set resource root directory
                 val path = Paths.get(fsPath)
                 logger.info("Get resource directory path from extension: $path")
-                
+
                 // Ensure the resource directory exists
                 if (!path.exists()) {
                     path.createDirectories()
                 }
-                
+
                  // Update resource root directory
                 resourceRootDir = path
-                
+
                 // Initialize theme manager
                 initializeThemeManager(fsPath)
 
@@ -247,12 +249,24 @@ class WebViewManager(var project: Project) : Disposable, ThemeChangeListener {
             logger.error("Cannot get RPC protocol instance, cannot register WebView provider: ${data.viewType}")
             return
         }
+        val jcefState = JcefSupport.current()
+        if (!jcefState.isRenderable) {
+            logger.error("JCEF is not usable ($jcefState); refusing to create WebView: ${data.viewType}")
+            NotificationUtil.showWarning(
+                "Zoo Code",
+                "Zoo Code needs the IDE embedded browser (JCEF), which this IDE does not provide. " +
+                    "The Zoo Code view cannot open.",
+                project
+            )
+            return
+        }
+
         // When registration event is notified, create a new WebView instance
         val viewId = UUID.randomUUID().toString()
 
         val title = data.options["title"] as? String ?: data.viewType
         val state = data.options["state"] as? Map<String, Any?> ?: emptyMap()
-        
+
         val webview = WebViewInstance(data.viewType, viewId, title, state,project,data.extension)
 
         val proxy = protocol.getProxy(ServiceProxyRegistry.ExtHostContext.ExtHostWebviewViews)
@@ -261,13 +275,13 @@ class WebViewManager(var project: Project) : Disposable, ThemeChangeListener {
 
         // Set as the latest created WebView
         latestWebView = webview
-        
+
         logger.info("Create WebView instance: viewType=${data.viewType}, viewId=$viewId")
 
         // Notify callback
         notifyWebViewCreated(webview)
     }
-    
+
     /**
          * Get the latest created WebView instance
          */
@@ -295,13 +309,13 @@ class WebViewManager(var project: Project) : Disposable, ThemeChangeListener {
                             const msgStr = JSON.stringify(message);
                             ${getLatestWebView()?.jsQuery?.inject("msgStr")}
                         };
-                        
+
                         // Inject VSCode API mock
                         globalThis.acquireVsCodeApi = (function() {
                             let acquired = false;
-                        
+
                             let state = JSON.parse('${encodedState}');
-                        
+
                             if (typeof window !== "undefined" && !window.receiveMessageFromPlugin) {
                                 console.log("VSCodeAPIWrapper: Setting up receiveMessageFromPlugin for IDEA plugin compatibility");
                                 window.receiveMessageFromPlugin = (message) => {
@@ -313,7 +327,7 @@ class WebViewManager(var project: Project) : Disposable, ThemeChangeListener {
                                     window.dispatchEvent(event);
                                 };
                             }
-                        
+
                             return () => {
                                 if (acquired) {
                                     throw new Error('An instance of the VS Code API has already been acquired');
@@ -335,21 +349,21 @@ class WebViewManager(var project: Project) : Disposable, ThemeChangeListener {
                                 });
                             };
                         })();
-                        
+
                         // Clean up references to window parent for security
                         delete window.parent;
                         delete window.top;
                         delete window.frameElement;
-                        
+
                         console.log("VSCode API mock injected");
                         """)
 
 
 
         logger.info("Received HTML update event: handle=${data.handle}, html length: ${data.htmlContent.length}")
-        
+
         val webView = getLatestWebView()
-        
+
         if (webView != null) {
             try {
                 // If HTTP server is running
@@ -394,14 +408,14 @@ class WebViewManager(var project: Project) : Disposable, ThemeChangeListener {
         }
     }
 
-    
+
     override fun dispose() {
         if (isDisposed) {
             logger.info("WebViewManager has already been disposed, ignoring repeated call")
             return
         }
         isDisposed = true
-        
+
         logger.info("Releasing WebViewManager resources...")
 
         // Remove listener from theme manager
@@ -410,7 +424,7 @@ class WebViewManager(var project: Project) : Disposable, ThemeChangeListener {
         } catch (e: Exception) {
             logger.error("Failed to remove listener from theme manager", e)
         }
-        
+
         // Clean up resource directory
         try {
             // Only delete index.html file, keep other files
@@ -437,15 +451,15 @@ class WebViewManager(var project: Project) : Disposable, ThemeChangeListener {
         } catch (e: Exception) {
             logger.error("Failed to release WebView resources", e)
         }
-        
+
         // Reset theme data
         currentThemeConfig = null
-        
+
         // Clear callback list
         synchronized(creationCallbacks) {
             creationCallbacks.clear()
         }
-        
+
         logger.info("WebViewManager released")
     }
 
@@ -464,7 +478,7 @@ class WebViewInstance(
     val extension: Map<String, Any?>
 ) : Disposable {
     private val logger = Logger.getInstance(WebViewInstance::class.java)
-    
+
     // JCEF browser instance
     val browser = JBCefBrowser.createBuilder().setOffScreenRendering(true).build()
 
@@ -473,7 +487,7 @@ class WebViewInstance(
     private val zoomKeyEventDispatcher = java.awt.KeyEventDispatcher { event ->
         handleZoomKeyEvent(event)
     }
-    
+
     // WebView state
     private var isDisposed = false
 
@@ -489,10 +503,10 @@ class WebViewInstance(
     private var isPageLoaded = false
 
     private var currentThemeConfig: JsonObject? = null
-    
+
     // Callback for page load completion
     private var pageLoadCallback: (() -> Unit)? = null
-    
+
     init {
         setupJSBridge()
         setupZoomShortcuts()
@@ -549,7 +563,7 @@ class WebViewInstance(
     fun isPageLoaded(): Boolean {
         return isPageLoaded
     }
-    
+
     /**
      * Set callback for page load completion
      * @param callback Callback function to be called when page is loaded
@@ -557,7 +571,7 @@ class WebViewInstance(
     fun setPageLoadCallback(callback: (() -> Unit)?) {
         pageLoadCallback = callback
     }
-    
+
     private fun injectTheme() {
         if(currentThemeConfig == null) {
             return
@@ -585,7 +599,7 @@ class WebViewInstance(
                                         // Extract CSS variables (format: --name:value;)
                                         const cssLines = `$cssContent`.split('\n');
                                         const cssVariables = [];
-                                        
+
                                         // Process each line, extract CSS variable declarations
                                         for (const line of cssLines) {
                                             const trimmedLine = line.trim();
@@ -598,17 +612,17 @@ class WebViewInstance(
                                                 cssVariables.push(trimmedLine);
                                             }
                                         }
-                                        
+
                                         // Merge extracted CSS variables into style attribute string
                                         const styleAttrValue = cssVariables.join(' ');
-                                        
+
                                         // Set as style attribute of html tag
                                         document.documentElement.setAttribute('style', styleAttrValue);
                                         console.log("CSS variables set as style attribute of HTML tag");
                                     } catch (error) {
                                         console.error("Error processing CSS variables:", error);
                                     }
-                                    
+
                                     // Keep original default style injection logic
                                     if(document.head) {
                                         // Inject default theme style into head, use id="_defaultStyles"
@@ -618,14 +632,14 @@ class WebViewInstance(
                                             defaultStylesElement.id = '_defaultStyles';
                                             document.head.appendChild(defaultStylesElement);
                                         }
-                                        
+
                                         // Add default_themes.css content
                                         defaultStylesElement.textContent = `
                                             html {
                                                 background: var(--vscode-sideBar-background);
                                                 scrollbar-color: var(--vscode-scrollbarSlider-background) var(--vscode-sideBar-background);
                                             }
-                                            
+
                                             body {
                                                 overscroll-behavior-x: none;
                                                 background-color: transparent;
@@ -638,25 +652,25 @@ class WebViewInstance(
                                                 overflow-x: hidden;   /* prevent horizontal scrollbar */
                                                 overflow-y: auto;     /* allow vertical scrolling only */
                                             }
-                                            
+
                                             img, video {
                                                 max-width: 100%;
                                                 height: auto;        /* keep aspect ratio and avoid vertical overflow */
                                                 display: block;      /* remove inline baseline gaps that can trigger overflow */
                                             }
-                                            
+
                                             a, a code {
                                                 color: var(--vscode-textLink-foreground);
                                             }
-                                            
+
                                             p > a {
                                                 text-decoration: var(--text-link-decoration);
                                             }
-                                            
+
                                             a:hover {
                                                 color: var(--vscode-textLink-activeForeground);
                                             }
-                                            
+
                                             a:focus,
                                             input:focus,
                                             select:focus,
@@ -664,7 +678,7 @@ class WebViewInstance(
                                                 outline: 1px solid -webkit-focus-ring-color;
                                                 outline-offset: -1px;
                                             }
-                                            
+
                                             code {
                                                 font-family: var(--monaco-monospace-font);
                                                 color: var(--vscode-textPreformat-foreground);
@@ -672,16 +686,16 @@ class WebViewInstance(
                                                 padding: 1px 3px;
                                                 border-radius: 4px;
                                             }
-                                            
+
                                             pre code {
                                                 padding: 0;
                                             }
-                                            
+
                                             blockquote {
                                                 background: var(--vscode-textBlockQuote-background);
                                                 border-color: var(--vscode-textBlockQuote-border);
                                             }
-                                            
+
                                             kbd {
                                                 background-color: var(--vscode-keybindingLabel-background);
                                                 color: var(--vscode-keybindingLabel-foreground);
@@ -694,19 +708,19 @@ class WebViewInstance(
                                                 vertical-align: middle;
                                                 padding: 1px 3px;
                                             }
-                                            
+
                                             ::-webkit-scrollbar {
                                                 width: 10px;
                                                 height: 10px;
                                             }
-                                            
+
                                             ::-webkit-scrollbar-corner {
                                                 background-color: var(--vscode-editor-background);
                                             }
-                                            
+
                                             *, *::before, *::after { box-sizing: border-box; }
                                             html, body { width: 100%; height: 100%; }
-                                            
+
                                             ::-webkit-scrollbar-thumb {
                                                 background-color: var(--vscode-scrollbarSlider-background);
                                             }
@@ -839,7 +853,7 @@ class WebViewInstance(
                     return true
                 }
             }, browser.cefBrowser)
-            
+
             // Register load handler
             client.addLoadHandler(object : CefLoadHandlerAdapter() {
                 override fun onLoadingStateChange(
@@ -850,7 +864,7 @@ class WebViewInstance(
                 ) {
                     logger.info("WebView loading state changed: isLoading=$isLoading, canGoBack=$canGoBack, canGoForward=$canGoForward")
                 }
-                
+
                 override fun onLoadStart(
                     browser: CefBrowser?,
                     frame: CefFrame?,
@@ -859,7 +873,7 @@ class WebViewInstance(
                     logger.info("WebView started loading: ${frame?.url}, transition type: $transitionType")
                     isPageLoaded = false
                 }
-                
+
                 override fun onLoadEnd(
                     browser: CefBrowser?,
                     frame: CefFrame?,
@@ -871,7 +885,7 @@ class WebViewInstance(
                     // Notify page load completion
                     pageLoadCallback?.invoke()
                 }
-                
+
                 override fun onLoadError(
                     browser: CefBrowser?,
                     frame: CefFrame?,
@@ -923,7 +937,7 @@ class WebViewInstance(
             logger.error("Failed to enable WebView resource interception", e)
         }
     }
-    
+
     /**
          * Load URL
          */
@@ -933,7 +947,7 @@ class WebViewInstance(
             browser.loadURL(url)
         }
     }
-    
+
     /**
          * Load HTML content
          */
@@ -947,7 +961,7 @@ class WebViewInstance(
             }
         }
     }
-    
+
     /**
          * Execute JavaScript
          */
@@ -957,7 +971,7 @@ class WebViewInstance(
             browser.cefBrowser.executeJavaScript(script, browser.cefBrowser.url, 0)
         }
     }
-    
+
     /**
          * Open developer tools
          */
@@ -966,7 +980,7 @@ class WebViewInstance(
             browser.openDevtools()
         }
     }
-    
+
     override fun dispose() {
         if (!isDisposed) {
             KeyboardFocusManager.getCurrentKeyboardFocusManager()

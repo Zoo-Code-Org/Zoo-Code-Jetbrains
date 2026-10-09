@@ -23,12 +23,12 @@ import kotlinx.coroutines.*
 import java.util.Properties
 import java.io.InputStream
 import com.intellij.openapi.util.SystemInfo
-import com.intellij.ui.jcef.JBCefApp
 import com.intellij.openapi.application.ApplicationInfo
 import org.zoocode.jetbrains.core.*
 import org.zoocode.jetbrains.extensions.core.ExtensionConfigurationManager
 import org.zoocode.jetbrains.extensions.core.ExtensionManager
 import org.zoocode.jetbrains.util.ExtensionUtils
+import org.zoocode.jetbrains.util.JcefSupport
 import org.zoocode.jetbrains.util.PluginConstants
 import org.zoocode.jetbrains.util.PluginInfo
 import org.zoocode.jetbrains.util.PluginResourceUtil
@@ -71,7 +71,7 @@ class WecoderPlugin : StartupActivity.DumbAware {
             "OS: $osName $osVersion ($osArch), " +
             "IDE: ${appInfo.fullApplicationName} (build ${appInfo.build}), " +
             "Plugin version: $pluginVersion, " +
-            "JCEF supported: ${JBCefApp.isSupported()}"
+            "JCEF: ${JcefSupport.current()}"
         )
 
         try {
@@ -525,13 +525,14 @@ class WecoderPluginService(private var currentProject: Project) : Disposable {
         
         LOG.info("Disposing WecoderPluginService")
 
-        currentProject.getService(WebViewManager::class.java)?.dispose()
-        
-        // Cancel all coroutines
-        coroutineScope.cancel()
-        
-        // Clean up resources
-        cleanup()
+        try {
+            currentProject.getService(WebViewManager::class.java)?.dispose()
+        } catch (e: Exception) {
+            LOG.warn("Error disposing web view during shutdown", e)
+        } finally {
+            coroutineScope.cancel()
+            cleanup()
+        }
         
         LOG.info("WecoderPluginService disposed")
     }

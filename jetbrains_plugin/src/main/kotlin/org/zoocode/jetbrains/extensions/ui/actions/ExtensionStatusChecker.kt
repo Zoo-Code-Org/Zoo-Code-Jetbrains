@@ -17,9 +17,9 @@ import javax.swing.*
 import org.zoocode.jetbrains.extensions.core.ExtensionManager
 import org.zoocode.jetbrains.core.PluginContext
 import org.zoocode.jetbrains.core.ServiceProxyRegistry
+import org.zoocode.jetbrains.util.JcefSupport
 import org.zoocode.jetbrains.util.ProxyConfigUtil
 import org.zoocode.jetbrains.webview.WebViewManager
-import com.intellij.ui.jcef.JBCefApp
 import com.intellij.openapi.application.ApplicationInfo
 import org.zoocode.jetbrains.util.PluginInfo
 
@@ -27,24 +27,24 @@ import org.zoocode.jetbrains.util.PluginInfo
  * Action to check extension status and diagnose issues
  */
 class ExtensionStatusChecker : AnAction("Check Extension Status") {
-    
+
     private val logger = Logger.getInstance(ExtensionStatusChecker::class.java)
-    
+
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.getData(CommonDataKeys.PROJECT) ?: return
-        
+
         val status = checkExtensionStatus(project)
         showStatusDialog(status)
     }
-    
+
     private fun checkExtensionStatus(project: Project): String {
         val sb = StringBuilder()
         sb.appendLine("🔍 Extension Status Check")
         sb.appendLine("=".repeat(50))
-        
+
         // Add System Information
         addSystemInformation(sb)
-        
+
         // Check Extension Manager
         try {
             val extensionManager = ExtensionManager.getInstance(project)
@@ -54,17 +54,17 @@ class ExtensionStatusChecker : AnAction("Check Extension Status") {
         } catch (e: Exception) {
             sb.appendLine("❌ Extension Manager Error: ${e.message}")
         }
-        
+
         // Check Plugin Context
         try {
             val pluginContext = project.getService(PluginContext::class.java)
             if (pluginContext != null) {
                 sb.appendLine("✅ PluginContext: Available")
-                
+
                 val rpcProtocol = pluginContext.getRPCProtocol()
                 if (rpcProtocol != null) {
                     sb.appendLine("✅ RPC Protocol: Available")
-                    
+
                     val commandsProxy = rpcProtocol.getProxy(ServiceProxyRegistry.ExtHostContext.ExtHostCommands)
                     if (commandsProxy != null) {
                         sb.appendLine("✅ ExtHostCommands Proxy: Available")
@@ -80,7 +80,7 @@ class ExtensionStatusChecker : AnAction("Check Extension Status") {
         } catch (e: Exception) {
             sb.appendLine("❌ Plugin Context Error: ${e.message}")
         }
-        
+
         // Check available extensions
         try {
             val extensionManager = ExtensionManager.getInstance(project)
@@ -92,7 +92,7 @@ class ExtensionStatusChecker : AnAction("Check Extension Status") {
         } catch (e: Exception) {
             sb.appendLine("❌ Error getting available extensions: ${e.message}")
         }
-        
+
         // Check WebView status
         try {
             val webViewManager = project.getService(WebViewManager::class.java)
@@ -110,12 +110,12 @@ class ExtensionStatusChecker : AnAction("Check Extension Status") {
         } catch (e: Exception) {
             sb.appendLine("\n❌ WebView Status Error: ${e.message}")
         }
-        
+
         // Check Proxy status
         try {
             val proxyConfig = ProxyConfigUtil.getProxyConfig()
             sb.appendLine("\n🌐 Proxy Status:")
-            
+
             val sourceDescription = when (proxyConfig.source) {
                 "ide-pac" -> "IDE Settings (PAC)"
                 "ide-http" -> "IDE Settings (HTTP Proxy)"
@@ -127,14 +127,14 @@ class ExtensionStatusChecker : AnAction("Check Extension Status") {
                 else -> proxyConfig.source
             }
             sb.appendLine("  Source: $sourceDescription")
-            
+
             if (proxyConfig.hasProxy) {
                 if (!proxyConfig.pacUrl.isNullOrEmpty()) {
                     sb.appendLine("  PAC URL: ${proxyConfig.pacUrl}")
                 } else if (!proxyConfig.proxyUrl.isNullOrEmpty()) {
                     sb.appendLine("  Proxy URL: ${proxyConfig.proxyUrl}")
                 }
-                
+
                 if (!proxyConfig.proxyExceptions.isNullOrEmpty()) {
                     sb.appendLine(" No Proxy For: ${proxyConfig.proxyExceptions}")
                 }
@@ -144,10 +144,10 @@ class ExtensionStatusChecker : AnAction("Check Extension Status") {
         } catch (e: Exception) {
             sb.appendLine("\n❌ Proxy Status Error: ${e.message}")
         }
-        
+
         return sb.toString()
     }
-    
+
     /**
      * Add system information to the status report
      */
@@ -158,62 +158,62 @@ class ExtensionStatusChecker : AnAction("Check Extension Status") {
             val osName = System.getProperty("os.name")
             val osVersion = System.getProperty("os.version")
             val osArch = System.getProperty("os.arch")
-            val jcefSupported = JBCefApp.isSupported()
-            
+            val jcefRenderable = JcefSupport.current().isRenderable
+
             // Check for Linux ARM system
             val isLinuxArm = osName.lowercase().contains("linux") && (osArch.lowercase().contains("aarch64") || osArch.lowercase().contains("arm"))
-            
+
             sb.appendLine("\n📊 System Information:")
             sb.appendLine("  💻 CPU Architecture: $osArch")
             sb.appendLine("  🖥️ Operating System: $osName $osVersion")
             sb.appendLine("  🔧 IDE Version: ${appInfo.fullApplicationName} (build ${appInfo.build})")
             sb.appendLine("  📦 Plugin Version: $pluginVersion")
-            sb.appendLine("  🌐 JCEF Support: ${if (jcefSupported) "✅ Yes" else "❌ No"}")
-            
+            sb.appendLine("  🌐 JCEF Support: ${if (jcefRenderable) "✅ Yes" else "❌ No"}")
+
             // Add warnings for unsupported configurations
             if (isLinuxArm) {
                 sb.appendLine("  ⚠️ Warning: Linux ARM systems are currently not supported")
             }
-            
-            if (!jcefSupported) {
+
+            if (!jcefRenderable) {
                 sb.appendLine("  ❌ Warning: JCEF not supported - WebView functionality may not work")
             }
-            
+
         } catch (e: Exception) {
             sb.appendLine("\n❌ System Information Error: ${e.message}")
         }
     }
-    
+
     private fun showStatusDialog(status: String) {
         val dialog = ExtensionStatusDialog(status)
         dialog.show()
     }
-    
+
     private class ExtensionStatusDialog(private val statusText: String) : DialogWrapper(true) {
-        
+
         init {
             title = "Extension Status"
             init()
         }
-        
+
         override fun createCenterPanel(): JComponent {
             val panel = JPanel()
             panel.layout = BoxLayout(panel, BoxLayout.Y_AXIS)
-            
+
             val textArea = JTextArea(statusText)
             textArea.isEditable = false
             textArea.font = JLabel().font
             textArea.background = JLabel().background
-            
+
             val scrollPane = JScrollPane(textArea)
             scrollPane.preferredSize = java.awt.Dimension(600, 400)
             scrollPane.verticalScrollBarPolicy = JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED
             scrollPane.horizontalScrollBarPolicy = JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED
-            
+
             panel.add(scrollPane)
             return panel
         }
-        
+
         override fun createActions(): Array<Action> {
             val copyAction = object : AbstractAction("Copy to Clipboard") {
                 override fun actionPerformed(e: java.awt.event.ActionEvent?) {
@@ -222,7 +222,7 @@ class ExtensionStatusChecker : AnAction("Check Extension Status") {
                     Messages.showInfoMessage("Status information copied to clipboard!", "Copied")
                 }
             }
-            
+
             return arrayOf(copyAction, okAction)
         }
     }

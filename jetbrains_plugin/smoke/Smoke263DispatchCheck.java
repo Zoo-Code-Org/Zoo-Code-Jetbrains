@@ -3,15 +3,18 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
+import java.util.jar.JarOutputStream;
 
 /**
  * Headless proof for the 2026.3 terminal compatibility, run by the
@@ -29,7 +32,8 @@ import java.util.jar.JarFile;
  *       valid override; it only cannot itself be overridden, which nothing
  *       needs to do,</li>
  *   <li>no packaged class references LocalTerminalDirectRunner#createProcess,
- *       whose 2023.3 descriptor does not resolve on 2026.3,</li>
+ *       whose 2023.3 descriptor does not resolve on 2026.3, and none
+ *       references the internal LocalPtyOptions API,</li>
  *   <li>RawOutputTtyConnector decodes and forwards output when linked against
  *       this IDE build's jediterm and pty4j binaries.</li>
  * </ul>
@@ -44,8 +48,16 @@ public class Smoke263DispatchCheck {
     private static final String RUNNER_CLASS = "org/jetbrains/plugins/terminal/LocalTerminalDirectRunner";
     private static final String DISPATCH_DESCRIPTOR =
         "(Lorg/jetbrains/plugins/terminal/ShellStartupOptions;)Lcom/jediterm/terminal/TtyConnector;";
-    private static final String BANNED_REF_PREFIX =
+    private static final String REMOVED_CREATE_PROCESS_PREFIX =
         "org/jetbrains/plugins/terminal/LocalTerminalDirectRunner#createProcess#";
+
+    // LocalPtyOptions is platform internal API since 2024.2 and so is its
+    // Companion.shouldUseWinConPty, which no packaged class may call. The
+    // prefix list matches member references; descriptors alone never match.
+    private static final List<String> BANNED_REF_PREFIXES = List.of(
+        REMOVED_CREATE_PROCESS_PREFIX,
+        "com/intellij/execution/process/LocalPtyOptions#",
+        "com/intellij/execution/process/LocalPtyOptions$Companion#");
     private static final String MULTIBYTE = "naive — 你好, τξζ, 🚀 smoke";
 
     private static final int ACC_PUBLIC = 0x0001;
@@ -55,9 +67,15 @@ public class Smoke263DispatchCheck {
     private static final int ACC_INTERFACE = 0x0200;
 
     public static void main(String[] args) throws Exception {
+        if (args.length == 1 && "--self-test".equals(args[0])) {
+            selfTestBannedRefScanner();
+            System.out.println("[smoke-263] self-test OK: scanner rejects the banned LocalPtyOptions references and passes clean jars");
+            return;
+        }
         if (args.length == 2 && "--scan-jar".equals(args[0])) {
             checkNoBannedRefs(Paths.get(args[1]));
-            System.out.println("[smoke-263] scan OK: no packaged reference to " + BANNED_REF_PREFIX + "*");
+            System.out.println("[smoke-263] scan OK: no packaged reference to "
+                + REMOVED_CREATE_PROCESS_PREFIX + "* or LocalPtyOptions*");
             return;
         }
         Path pluginJar = Paths.get(args[0]);
@@ -187,19 +205,160 @@ public class Smoke263DispatchCheck {
                 }
                 ClassFile parsed = ClassFile.parse(jar.getInputStream(entry).readAllBytes());
                 for (String ref : parsed.memberRefs) {
-                    if (ref.startsWith(BANNED_REF_PREFIX)) {
-                        violations.add(entry.getName() + ": " + ref);
+                    for (String prefix : BANNED_REF_PREFIXES) {
+                        if (ref.startsWith(prefix)) {
+                            violations.add(entry.getName() + ": " + ref);
+                        }
                     }
                 }
             }
         }
         if (!violations.isEmpty()) {
             throw new AssertionError(
-                "Packaged bytecode references LocalTerminalDirectRunner.createProcess. IntelliJ "
-                    + "2026.3 changed that method to return java.lang.Process, so a 2023.3 call "
-                    + "site does not resolve:\n" + String.join("\n", violations)
+                "Packaged bytecode references banned platform API. LocalTerminalDirectRunner"
+                    + ".createProcess does not resolve on IntelliJ 2026.3 (it returns "
+                    + "java.lang.Process there), and LocalPtyOptions is internal API:\n"
+                    + String.join("\n", violations)
                     + "\nStart the process through TerminalInstance.startTerminalProcess instead.");
         }
+    }
+
+    /**
+     * Synthetic fixture for the banned-reference scanner. The scanner parses
+     * constant pools, so the fixture builds minimal class files in a temporary
+     * directory; nothing is packaged with the plugin. The banned jar carries
+     * LocalPtyOptions and LocalPtyOptions$Companion member references and must
+     * be rejected; the clean jar carries public API references and a similarly
+     * named class and must pass.
+     */
+    private static void selfTestBannedRefScanner() throws Exception {
+        Path temp = Files.createTempDirectory("smoke263-selftest");
+        try {
+            Path banned = temp.resolve("banned.jar");
+            writeJar(banned, Map.of(
+                "selftest/BannedRefs.class", syntheticClass("selftest/BannedRefs", new String[][]{
+                    {"com/intellij/execution/process/LocalPtyOptions", "shouldUseWinConPty", "()Z"},
+                    {"com/intellij/execution/process/LocalPtyOptions$Companion", "shouldUseWinConPty", "()Z"},
+                })));
+            AssertionError failure = null;
+            try {
+                checkNoBannedRefs(banned);
+            } catch (AssertionError caught) {
+                failure = caught;
+            }
+            if (failure == null) {
+                throw new AssertionError("self-test: scanner missed the LocalPtyOptions reference");
+            }
+            if (!failure.getMessage().contains("LocalPtyOptions#")
+                    || !failure.getMessage().contains("LocalPtyOptions$Companion")) {
+                throw new AssertionError(
+                    "self-test: scanner report does not name both banned owners:\n" + failure.getMessage(),
+                    failure);
+            }
+
+            Path clean = temp.resolve("clean.jar");
+            writeJar(clean, Map.of(
+                "selftest/CleanRefs.class", syntheticClass("selftest/CleanRefs", new String[][]{
+                    {"com/pty4j/PtyProcess", "getWinSize", "()Lcom/pty4j/WinSize;"},
+                    {"com/intellij/execution/process/LocalPtyOptionsTest", "notInternal", "()V"},
+                })));
+            checkNoBannedRefs(clean);
+        } finally {
+            deleteRecursively(temp);
+        }
+    }
+
+    /** Builds a minimal class file whose constant pool carries the given method references. */
+    private static byte[] syntheticClass(String selfName, String[][] methodRefs) {
+        PoolBuilder pool = new PoolBuilder();
+        int selfClass = pool.clazz(pool.utf8(selfName));
+        int superClass = pool.clazz(pool.utf8("java/lang/Object"));
+        for (String[] ref : methodRefs) {
+            int owner = pool.clazz(pool.utf8(ref[0]));
+            int nameAndType = pool.nameAndType(pool.utf8(ref[1]), pool.utf8(ref[2]));
+            pool.methodref(owner, nameAndType);
+        }
+
+        java.io.ByteArrayOutputStream body = new java.io.ByteArrayOutputStream();
+        body.write(new byte[]{(byte) 0xCA, (byte) 0xFE, (byte) 0xBA, (byte) 0xBE}, 0, 4);
+        writeU2(body, 0);
+        writeU2(body, 52);
+        writeU2(body, pool.slotCount);
+        body.write(pool.bytes, 0, pool.length);
+        writeU2(body, ACC_PUBLIC | ACC_SUPER);
+        writeU2(body, selfClass);
+        writeU2(body, superClass);
+        writeU2(body, 0);
+        writeU2(body, 0);
+        writeU2(body, 0);
+        writeU2(body, 0);
+        return body.toByteArray();
+    }
+
+    /** Grows a constant pool with the entry types the banned-reference parser consumes. */
+    static final class PoolBuilder {
+        final byte[] bytes = new byte[65536];
+        int length;
+        int slotCount = 1;
+
+        int utf8(String value) {
+            byte[] encoded = value.getBytes(StandardCharsets.UTF_8);
+            bytes[length++] = 1;
+            writeU2(encoded.length);
+            System.arraycopy(encoded, 0, bytes, length, encoded.length);
+            length += encoded.length;
+            return slotCount++;
+        }
+
+        int clazz(int nameSlot) {
+            bytes[length++] = 7;
+            writeU2(nameSlot);
+            return slotCount++;
+        }
+
+        int nameAndType(int nameSlot, int descriptorSlot) {
+            bytes[length++] = 12;
+            writeU2(nameSlot);
+            writeU2(descriptorSlot);
+            return slotCount++;
+        }
+
+        int methodref(int classSlot, int nameAndTypeSlot) {
+            bytes[length++] = 10;
+            writeU2(classSlot);
+            writeU2(nameAndTypeSlot);
+            return slotCount++;
+        }
+
+        private void writeU2(int value) {
+            bytes[length++] = (byte) (value >>> 8);
+            bytes[length++] = (byte) value;
+        }
+    }
+
+    private static void writeJar(Path path, Map<String, byte[]> entries) throws Exception {
+        try (JarOutputStream jar = new JarOutputStream(Files.newOutputStream(path))) {
+            for (Map.Entry<String, byte[]> entry : entries.entrySet()) {
+                jar.putNextEntry(new JarEntry(entry.getKey()));
+                jar.write(entry.getValue());
+            }
+        }
+    }
+
+    private static void writeU2(java.io.ByteArrayOutputStream out, int value) {
+        out.write((value >>> 8) & 0xFF);
+        out.write(value & 0xFF);
+    }
+
+    private static void deleteRecursively(Path root) throws Exception {
+        if (Files.isDirectory(root)) {
+            try (DirectoryStream<Path> children = Files.newDirectoryStream(root)) {
+                for (Path child : children) {
+                    deleteRecursively(child);
+                }
+            }
+        }
+        Files.deleteIfExists(root);
     }
 
     private static void checkConnectorForwards() throws Exception {

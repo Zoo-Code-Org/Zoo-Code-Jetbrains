@@ -12,7 +12,6 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.ui.content.ContentFactory
-import com.intellij.ui.jcef.JBCefApp
 import com.intellij.openapi.application.ApplicationInfo
 import com.intellij.ide.BrowserUtil
 import org.zoocode.jetbrains.actions.OpenDevToolsAction
@@ -23,6 +22,7 @@ import org.zoocode.jetbrains.webview.DragDropHandler
 import org.zoocode.jetbrains.webview.WebViewCreationCallback
 import org.zoocode.jetbrains.webview.WebViewInstance
 import org.zoocode.jetbrains.webview.WebViewManager
+import org.zoocode.jetbrains.util.JcefSupport
 import org.zoocode.jetbrains.util.PluginConstants
 import org.zoocode.jetbrains.util.PluginInfo as PluginRuntimeInfo
 import org.zoocode.jetbrains.extensions.core.ExtensionConfigurationManager
@@ -87,7 +87,7 @@ class ZooCodeJetBrainsToolWindowFactory : ToolWindowFactory {
 
         // Get ExtensionConfigurationManager instance
         private val configManager = ExtensionConfigurationManager.getInstance(project)
-        
+
         // Get ExtensionManager instance
         private val extensionManager = ExtensionManager.getInstance(project)
 
@@ -139,7 +139,7 @@ class ZooCodeJetBrainsToolWindowFactory : ToolWindowFactory {
             val osName = System.getProperty("os.name")
             val osVersion = System.getProperty("os.version")
             val osArch = System.getProperty("os.arch")
-            val jcefSupported = JBCefApp.isSupported()
+            val jcefRenderable = JcefSupport.current().isRenderable
             val javaVersion = System.getProperty("java.version")
 
             // Check for Linux ARM system
@@ -158,7 +158,7 @@ class ZooCodeJetBrainsToolWindowFactory : ToolWindowFactory {
                 append("<li>IDE: ${appInfo.fullApplicationName}</li>")
                 append("<li>Plugin: v$pluginVersion</li>")
                 append("<li>Java: $javaVersion</li>")
-                append("<li>JCEF: ${if (jcefSupported) "Supported" else "Not Supported"}</li>")
+                append("<li>JCEF: ${if (jcefRenderable) "Supported" else "Not Supported"}</li>")
                 append("</ul>")
                 append("</div>")
 
@@ -170,7 +170,7 @@ class ZooCodeJetBrainsToolWindowFactory : ToolWindowFactory {
                     append("</div>")
                 }
 
-                if (!jcefSupported) {
+                if (!jcefRenderable) {
                     append("<div style='margin-top: 20px;'>")
                     append("<p>⚠️ JCEF Not Supported</p>")
                     append("<p>Please use a JCEF-enabled runtime.</p>")
@@ -211,7 +211,7 @@ class ZooCodeJetBrainsToolWindowFactory : ToolWindowFactory {
             val osVersion = System.getProperty("os.version")
             val osArch = System.getProperty("os.arch")
             val javaVersion = System.getProperty("java.version")
-            val jcefSupported = JBCefApp.isSupported()
+            val jcefRenderable = JcefSupport.current().isRenderable
 
             // Check for Linux ARM system
             val isLinuxArm = osName.lowercase().contains("linux") && (osArch.lowercase().contains("aarch64") || osArch.lowercase().contains("arm"))
@@ -225,14 +225,14 @@ class ZooCodeJetBrainsToolWindowFactory : ToolWindowFactory {
                 append("  IDE: ${appInfo.fullApplicationName} (build ${appInfo.build})\n")
                 append("  Plugin: v$pluginVersion\n")
                 append("  Java: $javaVersion\n")
-                append("  JCEF Support: ${if (jcefSupported) "Yes" else "No"}\n")
+                append("  JCEF Support: ${if (jcefRenderable) "Yes" else "No"}\n")
 
                 // Add warning messages
                 if (isLinuxArm) {
                     append("\nWarning: Linux ARM systems are currently not supported.\n")
                 }
 
-                if (!jcefSupported) {
+                if (!jcefRenderable) {
                     append("\nError: Your IDE runtime does not support JCEF. Please use a runtime with JCEF support.\n")
                 }
             }
@@ -274,7 +274,7 @@ class ZooCodeJetBrainsToolWindowFactory : ToolWindowFactory {
 
             // Check configuration status and show appropriate content
             if (configManager.isConfigurationLoaded() && configManager.isConfigurationValid()) {
-                
+
                 val initPanel = JPanel(BorderLayout()).apply {
                     border = BorderFactory.createEmptyBorder(20, 20, 20, 20)
                     add(placeholderLabel, BorderLayout.CENTER)
@@ -301,10 +301,10 @@ class ZooCodeJetBrainsToolWindowFactory : ToolWindowFactory {
                 add(buttonPanel, BorderLayout.SOUTH)
             }
             contentPanel.add(initPanel, BorderLayout.CENTER)
-            
+
             // Don't auto-start here - WecoderPlugin will handle startup
             // The plugin will start automatically if configuration is valid
-            
+
             // Start configuration monitoring
             startConfigurationMonitoring()
 
@@ -528,15 +528,15 @@ class ZooCodeJetBrainsToolWindowFactory : ToolWindowFactory {
                     showDebugInfo()
                 }
             }
-            
+
             buttonPanel.add(debugButton, BorderLayout.WEST)
-            
+
             // Add all components
             panel.add(titleLabel, BorderLayout.NORTH)
             panel.add(descLabel, BorderLayout.CENTER)
             panel.add(pluginListPanel, BorderLayout.CENTER)
             panel.add(buttonPanel, BorderLayout.SOUTH)
-            
+
             return panel
         }
 
@@ -556,7 +556,7 @@ class ZooCodeJetBrainsToolWindowFactory : ToolWindowFactory {
                 val extensionId = provider.getExtensionId()
                 val isCurrent = provider.getExtensionId() == currentExtensionId
                 val isAvailable = provider.isAvailable(project)
-                
+
                 PluginInfo(
                     id = extensionId,
                     displayName = provider.getDisplayName(),
@@ -580,12 +580,12 @@ class ZooCodeJetBrainsToolWindowFactory : ToolWindowFactory {
          */
         private fun createPluginRow(pluginInfo: PluginInfo): JPanel {
             val rowPanel = JPanel(BorderLayout())
-            
+
             // Main content panel - use default IDE styling
             val contentPanel = JPanel(BorderLayout()).apply {
                 // Use default panel background from IDE theme
                 isOpaque = true
-                
+
                 // Simple border without custom colors
                 val borderWidth = if (pluginInfo.isCurrent) 2 else 1
                 border = BorderFactory.createCompoundBorder(
@@ -630,7 +630,7 @@ class ZooCodeJetBrainsToolWindowFactory : ToolWindowFactory {
                 font = JBFont.label()
                 isEnabled = true
                 isFocusPainted = false
-                
+
                 addActionListener {
                     uploadVsixForPlugin(pluginInfo.id, pluginInfo.displayName)
                 }
@@ -671,7 +671,7 @@ class ZooCodeJetBrainsToolWindowFactory : ToolWindowFactory {
                             applyPluginSelection(pluginInfo.id)
                         }
                     }
-                    
+
                     override fun mouseEntered(e: java.awt.event.MouseEvent) {
                         contentPanel.cursor = java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR)
                         // Simple hover border effect using IDE theme colors
@@ -681,7 +681,7 @@ class ZooCodeJetBrainsToolWindowFactory : ToolWindowFactory {
                         )
                         contentPanel.repaint()
                     }
-                    
+
                     override fun mouseExited(e: java.awt.event.MouseEvent) {
                         contentPanel.cursor = java.awt.Cursor.getDefaultCursor()
                         // Restore normal border
@@ -730,7 +730,7 @@ class ZooCodeJetBrainsToolWindowFactory : ToolWindowFactory {
             try {
                 // Use VsixUploadDialog directly
                 val success = VsixUploadDialog.show(project, pluginId, pluginName)
-                
+
                 if (success) {
                     javax.swing.JOptionPane.showMessageDialog(
                         contentPanel,
@@ -749,7 +749,7 @@ class ZooCodeJetBrainsToolWindowFactory : ToolWindowFactory {
                 )
             }
         }
-        
+
         /**
          * Create configuration status panel
          */
@@ -757,33 +757,33 @@ class ZooCodeJetBrainsToolWindowFactory : ToolWindowFactory {
             val panel = JPanel()
             panel.layout = BorderLayout()
             panel.border = javax.swing.BorderFactory.createEmptyBorder(20, 20, 20, 20)
-            
+
             // Status label
             val statusLabel = JLabel().apply {
                 font = font.deriveFont(14f)
                 horizontalAlignment = javax.swing.SwingConstants.CENTER
             }
-            
+
             // Update status
             updateConfigStatus(statusLabel)
-            
+
             panel.add(statusLabel, BorderLayout.CENTER)
             return panel
         }
-        
+
         /**
          * Update configuration status
          */
         private fun updateConfigStatus(statusLabel: JLabel) {
             // Detect current theme for status colors
             val isDarkTheme = detectCurrentTheme()
-            
+
             if (configManager.isConfigurationLoaded()) {
                 if (configManager.isConfigurationValid()) {
                     val extensionId = configManager.getCurrentExtensionId()
                     // Check if plugin is actually running
                     val isPluginRunning = isPluginActuallyRunning()
-                    
+
                     if (isPluginRunning) {
                         statusLabel.text = "✅ Plugin Running - Current Plugin: $extensionId"
                         statusLabel.foreground = getThemeAdaptiveColor(isDarkTheme, "success")
@@ -814,22 +814,22 @@ class ZooCodeJetBrainsToolWindowFactory : ToolWindowFactory {
                 else -> javax.swing.UIManager.getColor("Label.foreground") ?: java.awt.Color(128, 128, 128)
             }
         }
-        
+
         /**
          * Apply plugin selection and create configuration
          */
         private fun applyPluginSelection(pluginId: String) {
             try {
                 logger.info("Applying plugin selection: $pluginId")
-                
+
                 // Create configuration with selected plugin
                 configManager.setCurrentExtensionId(pluginId)
-                
+
                 // Verify configuration was saved successfully
                 if (configManager.isConfigurationValid()) {
                     // Start the plugin directly instead of just saving configuration
                     startPluginAfterSelection(pluginId)
-                    
+
                     logger.info("Plugin selection applied successfully: $pluginId")
                 } else {
                     // Configuration is still invalid after setting
@@ -841,7 +841,7 @@ class ZooCodeJetBrainsToolWindowFactory : ToolWindowFactory {
                         "Configuration Update Failed",
                         javax.swing.JOptionPane.ERROR_MESSAGE
                     )
-                    
+
                     logger.error("Configuration is still invalid after setting extension ID: $pluginId, error: $errorMsg")
                 }
             } catch (e: Exception) {
@@ -855,40 +855,40 @@ class ZooCodeJetBrainsToolWindowFactory : ToolWindowFactory {
                 )
             }
         }
-        
+
         /**
          * Start plugin after plugin selection
          */
         private fun startPluginAfterSelection(pluginId: String) {
             try {
                 logger.info("Starting plugin after selection: $pluginId")
-                
+
                 // Set plugin starting state
                 isPluginStarting = true
-                
+
                 // Update status to show plugin is starting
                 updateConfigStatus(configStatusPanel.getComponent(0) as JLabel)
-                
+
                 // Get extension manager and set the selected provider
                 val extensionManager = ExtensionManager.getInstance(project)
                 extensionManager.initialize(pluginId)
-                
+
                 // Initialize the current provider
                 extensionManager.initializeCurrentProvider()
-                
+
                 // Start plugin service
                 val pluginService = WecoderPlugin.getInstance(project)
                 pluginService.initialize(project)
-                
+
                 // Initialize WebViewManager
                 val webViewManager = project.getService(WebViewManager::class.java)
                 if (webViewManager != null) {
                     // Register to project Disposer
                     com.intellij.openapi.util.Disposer.register(project, webViewManager)
-                    
+
                     // Start configuration monitoring
                     startConfigurationMonitoring()
-                    
+
                     // Register project-level resource disposal
                     com.intellij.openapi.util.Disposer.register(project, com.intellij.openapi.Disposable {
                         logger.info("Disposing Zoo Code JetBrains plugin for project: ${project.name}")
@@ -899,26 +899,26 @@ class ZooCodeJetBrainsToolWindowFactory : ToolWindowFactory {
                         isPluginRunning = false
                         isPluginStarting = false
                     })
-                    
+
                     logger.info("Plugin started successfully after selection: $pluginId")
-                    
+
                     // Set plugin running state
                     isPluginRunning = true
                     isPluginStarting = false
-                    
+
                     // Update UI to show plugin is running
                     updateUIContent()
                 } else {
                     logger.error("WebViewManager not available")
                     throw IllegalStateException("WebViewManager not available")
                 }
-                
+
             } catch (e: Exception) {
                 logger.error("Failed to start plugin after selection", e)
                 // Reset state on failure
                 isPluginStarting = false
                 isPluginRunning = false
-                
+
                 val message = "❌ Plugin Startup Failed\nError: ${e.message}\n\nPlease check plugin configuration or try restarting the IDE."
                 javax.swing.JOptionPane.showMessageDialog(
                     contentPanel,
@@ -928,7 +928,7 @@ class ZooCodeJetBrainsToolWindowFactory : ToolWindowFactory {
                 )
             }
         }
-        
+
         /**
          * Update UI content based on configuration status
          */
@@ -938,20 +938,20 @@ class ZooCodeJetBrainsToolWindowFactory : ToolWindowFactory {
                 logger.info("Plugin is starting or running, skipping UI update")
                 return
             }
-            
+
             // Check if plugin is actually running
             val isPluginRunning = isPluginActuallyRunning()
-            
+
             // If plugin is running, don't change the main UI content
             if (isPluginRunning) {
                 logger.info("Plugin is running, keeping current UI content")
                 return
             }
-            
+
             contentPanel.removeAll()
-            
+
             // Always show system info panel (Zoo Code is always configured)
-            
+
             val initPanel = JPanel(BorderLayout()).apply {
                 border = BorderFactory.createEmptyBorder(20, 20, 20, 20)
                 add(placeholderLabel, BorderLayout.CENTER)
@@ -959,33 +959,33 @@ class ZooCodeJetBrainsToolWindowFactory : ToolWindowFactory {
             }
             contentPanel.add(initPanel, BorderLayout.CENTER)
             logger.info("Showing system info panel - Zoo Code auto-configured")
-            
+
             contentPanel.revalidate()
             contentPanel.repaint()
         }
-        
-        
+
+
         /**
          * Show manual configuration instructions
          */
         private fun showManualConfigInstructions() {
             val instructions = """
                 📝 Manual Configuration Instructions
-                
+
                 1. Create configuration file in user home directory: ${PluginConstants.ConfigFiles.getMainConfigPath()}
                 2. Add the following content:
                    ${PluginConstants.ConfigFiles.EXTENSION_TYPE_KEY}=zoo-code
-                   
+
                 3. Supported plugin types:
                    - zoo-code: Zoo Code AI Assistant
                    - cline: Cline AI Assistant
                    - custom: Custom Plugin
-                   
+
                 4. Save the file and restart IDE
-                
+
                 Configuration file path: ${configManager.getConfigurationFilePath()}
             """.trimIndent()
-            
+
             javax.swing.JOptionPane.showMessageDialog(
                 contentPanel,
                 instructions,
@@ -1001,18 +1001,18 @@ class ZooCodeJetBrainsToolWindowFactory : ToolWindowFactory {
             val debugText = """
                 Zoo Code Debug Information
                 ==========================
-                
+
                 🚀 Plugin Status: ${if (configManager.isConfigurationLoaded() && configManager.isConfigurationValid()) "Loaded and Valid" else "Not Loaded or Invalid"}
-                
+
                 📝 Current Configuration: ${configManager.getCurrentExtensionId() ?: "Not Set"}
-                
+
                 ⚙️ Configuration File Path: ${configManager.getConfigurationFilePath()}
-                
+
                 🔄 Configuration Load Time: ${configManager.getConfigurationLoadTime()?.let { it.toString() } ?: "Unknown"}
-                
+
                 💡 Tip: If configuration is invalid, please check the configuration file content or try manual configuration.
             """.trimIndent()
-            
+
             javax.swing.JOptionPane.showMessageDialog(
                 contentPanel,
                 debugText,

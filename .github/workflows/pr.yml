@@ -96,6 +96,11 @@ jobs:
         run: >
           ./gradlew test
           --tests "org.zoocode.jetbrains.terminal.RawOutputTtyConnectorTest"
+          --tests "org.zoocode.jetbrains.util.JcefSupportTest"
+          --tests "org.zoocode.jetbrains.descriptor.PluginDescriptorTest"
+          --tests "org.zoocode.jetbrains.terminal.TerminalPtyBuilderTest"
+          --tests "org.zoocode.jetbrains.terminal.ShellIntegrationOutputStateTest"
+          --tests "org.zoocode.jetbrains.terminal.TerminalShellReadinessTest"
           --no-configuration-cache
 
       - name: Build the plugin
@@ -123,3 +128,116 @@ jobs:
           ./gradlew smoke263Dispatch
           -PsmokeLocalIde="build/ideaIC-${IDEA_263_BUILD}"
           --no-configuration-cache
+
+  windows-verify:
+    name: Windows terminal tests and PowerShell 5.1 smoke
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out the JetBrains plugin
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      # git rev-parse reports the exact checkout that ran. A pull_request event
+      # can test a merge commit, so the recorded value, not the branch head, is
+      # the validated one.
+      - name: Record the run identity
+        shell: powershell
+        run: |
+          $identity = @"
+          Validation: GitHub Actions Windows runner
+          Checkout: $env:GITHUB_WORKSPACE
+          Tested commit: $(git rev-parse HEAD)
+          OS: windows-latest
+          JDK: temurin 17
+          Run: $env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID
+          "@
+          Write-Output $identity
+          Set-Content -Path windows-run-identity.txt -Value $identity
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      # The same build-only fixtures the Linux job creates: the Gradle build
+      # reads these paths while it configures prepareSandbox, and the pull
+      # request tests never package the real extension payload.
+      - name: Create the sandbox input paths the Gradle build needs
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path jetbrains_plugin/plugins/zoo-code/extension | Out-Null
+          New-Item -ItemType File -Force -Path jetbrains_plugin/plugins/zoo-code/extension/.keep | Out-Null
+          New-Item -ItemType File -Force -Path jetbrains_plugin/prodDep.txt | Out-Null
+
+      # RawOutputTtyConnectorTest runs its stub connector tests and skips the
+      # Linux-only real-PTY test. WindowsConPtyProcessTest holds the real
+      # ConPTY process tests and is skipped on any non-Windows runner.
+      #
+      # The runner wraps `powershell` scripts in $ErrorActionPreference =
+      # 'stop'. In Windows PowerShell 5.1, `2>&1` on a native command turns
+      # every stderr line into an ErrorRecord, and under 'stop' the first
+      # Gradle stderr line would abort the step before the exit-code line
+      # runs. The 2>&1 merge therefore happens inside cmd.exe, before
+      # PowerShell sees any bytes, so the pipeline carries plain strings.
+      # cmd /c propagates the Gradle wrapper exit code into $LASTEXITCODE.
+      # A missing or empty log means the upload step would publish no
+      # evidence, so that failure is surfaced explicitly.
+      - name: Run the Windows terminal tests
+        working-directory: jetbrains_plugin
+        shell: powershell
+        run: |
+          $taskList = @(
+            'test'
+            '--tests org.zoocode.jetbrains.terminal.RawOutputTtyConnectorTest'
+            '--tests org.zoocode.jetbrains.terminal.TerminalPtyBuilderTest'
+            '--tests org.zoocode.jetbrains.terminal.ShellIntegrationOutputStateTest'
+            '--tests org.zoocode.jetbrains.terminal.TerminalShellReadinessTest'
+            '--tests org.zoocode.jetbrains.terminal.WindowsConPtyProcessTest'
+            '--no-configuration-cache'
+          )
+          cmd /c "gradlew.bat $($taskList -join ' ') 2>&1" | Tee-Object -FilePath ..\windows-test-log.txt
+          $gradleExit = $LASTEXITCODE
+          $testLog = Get-Item -LiteralPath ..\windows-test-log.txt -ErrorAction SilentlyContinue
+          if ($null -eq $testLog -or $testLog.Length -eq 0) {
+            Write-Output '::error::the Gradle test log is missing or empty, so the artifact step would publish no evidence'
+            exit 1
+          }
+          exit $gradleExit
+
+      # The "powershell" shell is Windows PowerShell 5.1; "pwsh" would run
+      # PowerShell 7 and would not validate the 5.1 parser path. The script
+      # signals failure with a terminating error, so a catch decides the step
+      # outcome; $LASTEXITCODE is stale here because the script's last native
+      # command is cmd.exe. The smoke is independent of the Gradle test step,
+      # so it still runs when that step failed; !cancelled() skips it only
+      # when the job itself is cancelled. A failed test step keeps failing the
+      # job, and this step keeps its own exit-code checks.
+      - name: Smoke check the PowerShell integration profile on Windows PowerShell 5.1
+        if: ${{ !cancelled() }}
+        shell: powershell
+        run: |
+          try {
+            & .\jetbrains_plugin\smoke\PowerShellIntegrationCheck.ps1 2>&1 | Tee-Object -FilePath windows-smoke-log.txt
+          } catch {
+            $_ | Out-String | Tee-Object -FilePath windows-smoke-log.txt -Append
+            exit 1
+          }
+          exit 0
+
+      - name: Store the test results, logs, and run identity
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-pr-results-${{ github.sha }}-windows-latest-jdk17
+          path: |
+            jetbrains_plugin/build/test-results/test/*.xml
+            jetbrains_plugin/build/reports/tests/test/**
+            windows-test-log.txt
+            windows-smoke-log.txt
+            windows-run-identity.txt
+          if-no-files-found: warn

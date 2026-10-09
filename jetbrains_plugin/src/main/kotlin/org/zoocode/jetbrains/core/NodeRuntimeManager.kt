@@ -5,10 +5,10 @@
 package org.zoocode.jetbrains.core
 
 import com.intellij.openapi.diagnostic.Logger
+import com.intellij.openapi.progress.EmptyProgressIndicator
 import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.ProgressManager
-import com.intellij.openapi.progress.Task
 import com.intellij.openapi.application.PathManager
 import com.intellij.openapi.util.SystemInfo
 import okhttp3.OkHttpClient
@@ -160,27 +160,29 @@ object NodeRuntimeManager {
     }
 
     /**
-     * Run the download under an IDE background progress indicator.
+     * Run the download under a modal progress indicator.
      * Blocks the calling thread (must not be the EDT) until the download finishes.
      */
     private fun downloadWithProgress(dist: NodeDistribution): String? {
         var installedPath: String? = null
         var canceled = false
 
-        val task = object : Task.Backgroundable(null, "Downloading Node.js runtime", true) {
-            override fun run(indicator: ProgressIndicator) {
-                try {
-                    installedPath = doDownload(dist, indicator)
-                } catch (e: ProcessCanceledException) {
-                    canceled = true
-                    LOG.info("Node.js runtime download canceled by user")
-                } catch (e: Exception) {
-                    LOG.warn("Failed to download Node.js runtime from ${dist.archiveUrl}", e)
-                }
+        // ProgressManager.run(Task) queues a Backgroundable and returns before
+        // it finishes, so every first launch saw null and the extension host
+        // did not start until the next IDE session. The synchronous variant
+        // blocks the caller while still showing progress; the calling thread
+        // is never the EDT.
+        ProgressManager.getInstance().runProcessWithProgressSynchronously({
+            try {
+                val indicator = ProgressManager.getInstance().progressIndicator
+                installedPath = doDownload(dist, indicator ?: EmptyProgressIndicator())
+            } catch (e: ProcessCanceledException) {
+                canceled = true
+                LOG.info("Node.js runtime download canceled by user")
+            } catch (e: Exception) {
+                LOG.warn("Failed to download Node.js runtime from ${dist.archiveUrl}", e)
             }
-        }
-
-        ProgressManager.getInstance().run(task)
+        }, "Downloading Node.js runtime", true, null)
 
         if (installedPath != null) {
             clearDownloadFailure(dist.version)

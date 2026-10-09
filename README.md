@@ -82,6 +82,8 @@ The plugin targets IntelliJ Platform build **233** (JetBrains 2023.3) or newer. 
 - Android Studio 2026.1.4 or newer when using Android Studio; install a preview build until this version reaches the stable channel
 - A JCEF-enabled IDE runtime, which Zoo Code requires to render its interface
 
+Where JCEF support comes from depends on the IDE version. From IntelliJ Platform 2026.2 (build 262), JCEF ships as a separate bundled plugin. If that plugin is missing or disabled, Zoo Code shows a warning notification and the Zoo Code tool window cannot render. Enable the bundled JCEF plugin under **Settings → Plugins → Installed** and restart the IDE. On IDEs older than 2026.2, JCEF comes from the IDE runtime; see [Known Issues](docs/KNOWN_ISSUES.md).
+
 On first launch the plugin automatically downloads a pinned, platform-specific Node.js runtime from [nodejs.org](https://nodejs.org) (checksum-verified) and uses it to run the extension host, so no local Node.js installation is required. If the download is unavailable, the plugin falls back to a bundled Node.js or a Node.js **20.6.0 or newer** found on your `PATH`.
 
 ### Building from source

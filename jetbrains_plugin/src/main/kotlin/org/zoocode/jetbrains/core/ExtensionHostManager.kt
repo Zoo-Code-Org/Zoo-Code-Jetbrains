@@ -7,6 +7,7 @@ package org.zoocode.jetbrains.core
 
 import com.google.gson.Gson
 import com.intellij.openapi.Disposable
+import com.intellij.openapi.application.PathManager
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.application.ApplicationInfo
@@ -25,6 +26,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import java.net.Socket
 import java.nio.channels.SocketChannel
+import java.nio.file.Files
 import java.nio.file.Paths
 import org.zoocode.jetbrains.extensions.core.ExtensionManager as GlobalExtensionManager
 import org.zoocode.jetbrains.extensions.config.ExtensionProvider
@@ -309,7 +311,7 @@ class ExtensionHostManager : Disposable {
             ),
             "logLevel" to 0, // Info level
             "loggers" to emptyList<Any>(),
-            "logsLocation" to uriFromPath(Paths.get(pluginDir, "logs").toString()),
+            "logsLocation" to uriFromPath(getExtensionHostLogsDir()),
             "autoStart" to true,
             "consoleForward" to mapOf(
                 "includeStack" to false,
@@ -373,6 +375,21 @@ class ExtensionHostManager : Disposable {
     private fun getPluginDir(): String {
         return PluginResourceUtil.getResourcePath(PluginConstants.PLUGIN_ID, "")
             ?: throw IllegalStateException("Unable to get plugin directory")
+    }
+
+    /**
+     * Keep extension-host logs outside the plugin installation directory so
+     * JetBrains can replace the plugin during update/restart even if Node still
+     * has exthost.log open for a short time.
+     */
+    private fun getExtensionHostLogsDir(): String {
+        val logsDir = Paths.get(PathManager.getLogPath(), PluginConstants.PLUGIN_ID, "extension-host")
+        try {
+            Files.createDirectories(logsDir)
+        } catch (e: Exception) {
+            LOG.warn("Failed to create extension host logs directory: $logsDir", e)
+        }
+        return logsDir.toString()
     }
     
     /**
