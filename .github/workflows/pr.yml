@@ -213,8 +213,12 @@ jobs:
       # PowerShell 7 and would not validate the 5.1 parser path. The script
       # signals failure with a terminating error, so a catch decides the step
       # outcome; $LASTEXITCODE is stale here because the script's last native
-      # command is cmd.exe.
+      # command is cmd.exe. The smoke is independent of the Gradle test step,
+      # so it still runs when that step failed; !cancelled() skips it only
+      # when the job itself is cancelled. A failed test step keeps failing the
+      # job, and this step keeps its own exit-code checks.
       - name: Smoke check the PowerShell integration profile on Windows PowerShell 5.1
+        if: ${{ !cancelled() }}
         shell: powershell
         run: |
           try {

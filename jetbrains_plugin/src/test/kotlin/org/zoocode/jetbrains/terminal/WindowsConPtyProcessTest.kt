@@ -22,6 +22,13 @@ private const val DESTROY_LIMIT_MS = 10_000L
 private const val TEARDOWN_BUDGET_MS = CLOSE_LIMIT_MS + READER_LIMIT_MS + DESTROY_LIMIT_MS + 5_000L
 
 /**
+ * Matches one rendered counted prompt, zp<N>. The echoed definition text
+ * contains the parts separated by quotes and plus signs, so only a prompt the
+ * host actually rendered can match.
+ */
+private val PROMPT_SENTINEL_REGEX = Regex("zp([0-9]+)>")
+
+/**
  * Real ConPTY process tests for the terminal stack on native Windows. Each test
  * starts an owned PowerShell through the production builder [TerminalPtyBuilder]
  * and asserts the live process is the ConPTY backend [WinConPtyProcess], so a
@@ -80,6 +87,32 @@ class WindowsConPtyProcessTest {
                 Thread.sleep(100)
             }
             return false
+        }
+
+        /**
+         * Returns the highest generation seen on screen for the counted prompt
+         * sentinel zp<N>, or 0 when no prompt is on screen yet. The echoed
+         * definition text holds the parts separated by quotes and plus signs,
+         * so the typed echo can never match zp<N> and only a rendered prompt
+         * increments the count.
+         */
+        fun highestPromptGeneration(): Int =
+            PROMPT_SENTINEL_REGEX.findAll(snapshot())
+                .mapNotNull { it.groupValues[1].toIntOrNull() }
+                .maxOrNull() ?: 0
+
+        /**
+         * Waits for a prompt whose generation is at least [minGeneration], so
+         * an earlier prompt can never satisfy the wait. The last check repeats
+         * after the loop so a prompt that lands during the final sleep counts.
+         */
+        fun awaitPromptAtOrAfter(minGeneration: Int, timeoutSeconds: Long): Boolean {
+            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(timeoutSeconds)
+            while (System.nanoTime() < deadline) {
+                if (highestPromptGeneration() >= minGeneration) return true
+                Thread.sleep(100)
+            }
+            return highestPromptGeneration() >= minGeneration
         }
 
         fun awaitReaderTermination(timeoutMs: Long): Boolean =
@@ -252,16 +285,42 @@ class WindowsConPtyProcessTest {
     }
 
     /**
-     * Proves the ETX byte cancels the running pipeline: the 90s statement
-     * never completes and the shell accepts a new command while staying alive.
+     * Proves the ETX byte returns the shell to a ready prompt and cancels the
+     * running pipeline: the 90s statement never completes and the shell accepts
+     * a new command while staying alive.
+     *
+     * A counted prompt sentinel is installed before the interrupt. After the
+     * ETX the test waits for a prompt generation newer than the last
+     * pre-interrupt one, and sends the next command only after that
+     * observation. A console control event can flush pending typed input, so
+     * text sent before the shell is ready may never reach the pipeline; the
+     * separate prompt wait removes that race from the result.
+     *
      * The test does not distinguish an interrupt that hits an already-running
      * Start-Sleep from one that discards the pipeline before the sleep starts;
      * a console test cannot observe that difference. The elapsed bound is the
-     * proof that the 90s statement never ran to completion.
+     * proof that the 90s statement never ran to completion. When no prompt
+     * returns, the ETX byte did not interrupt the pipeline in this harness and
+     * the test fails with that fact; the wait is never widened to hide it.
      */
     @Test
     fun `conPty interrupt byte stops the running pipeline and the shell survives`() {
         withConPtySession("interrupt") { session ->
+            session.connector.write(
+                "\$script:zpGen = 0; " +
+                    "function prompt { \$script:zpGen = 1 + \$script:zpGen; 'zp' + \$script:zpGen + '> ' }; " +
+                    "Write-Output ('zpdef-' + 'ok')\r",
+            )
+            assertTrue("the counted prompt was not installed within 30s", session.output.await("zpdef-ok", 30))
+            // The first counted prompt renders after the install command
+            // completes, so the wait proves the sentinel is live before the
+            // baseline is read.
+            assertTrue(
+                "no counted prompt rendered after the install command within 30s: ${session.output.snapshot()}",
+                session.output.awaitPromptAtOrAfter(1, 30),
+            )
+            val baselineGeneration = session.output.highestPromptGeneration()
+
             val armedAtNs = System.nanoTime()
             session.connector.write(
                 "Write-Output ('interrupt-' + 'armed'); Start-Sleep -Seconds 90; " +
@@ -270,16 +329,27 @@ class WindowsConPtyProcessTest {
             assertTrue("the long pipeline was not started within 30s", session.output.await("interrupt-armed", 30))
 
             session.connector.write("\u0003")
-            session.connector.write("Write-Output ('after-' + 'interrupt')\r")
 
+            // Observe the post-interrupt prompt before sending any new
+            // command. The prompt can only render after the pipeline ended, so
+            // this wait is the direct readiness proof.
+            val promptReturned = session.output.awaitPromptAtOrAfter(baselineGeneration + 1, 20)
+            val elapsedSeconds = TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - armedAtNs)
+            assertTrue(
+                "the shell did not return to a prompt after the ETX interrupt within 20s; after " +
+                    "$elapsedSeconds s the interrupt is not observed and the pipeline still holds the shell: " +
+                    session.output.snapshot(),
+                promptReturned,
+            )
+            assertTrue(
+                "the 90s pipeline was not interrupted; the post-interrupt prompt returned after $elapsedSeconds s",
+                elapsedSeconds < 60,
+            )
+
+            session.connector.write("Write-Output ('after-' + 'interrupt')\r")
             assertTrue(
                 "the shell did not accept input after the interrupt within 20s: ${session.output.snapshot()}",
                 session.output.await("after-interrupt", 20),
-            )
-            val elapsedSeconds = TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - armedAtNs)
-            assertTrue(
-                "the 90s pipeline was not interrupted; the next command ran after $elapsedSeconds s",
-                elapsedSeconds < 60,
             )
 
             session.connector.write("exit 0\r")
