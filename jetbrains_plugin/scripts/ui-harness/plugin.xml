@@ -1,0 +1,13 @@
+<idea-plugin>
+    <!-- TEST-ONLY harness driver. Installed exclusively into the temporary
+         IDE profiles that run-solheim.sh creates. Never shipped and
+         never referenced by the Zoo Code plugin descriptor. -->
+    <id>org.zoocode.harness.driver</id>
+    <name>Zoo Harness Driver (TEST ONLY)</name>
+    <vendor>zoo-code-harness</vendor>
+    <depends>com.intellij.modules.platform</depends>
+    <applicationListeners>
+        <listener class="org.zoocode.harnessdriver.HarnessDriver"
+                  topic="com.intellij.ide.AppLifecycleListener"/>
+    </applicationListeners>
+</idea-plugin>

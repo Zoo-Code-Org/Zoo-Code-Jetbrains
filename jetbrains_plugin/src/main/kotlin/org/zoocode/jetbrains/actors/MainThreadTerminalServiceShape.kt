@@ -12,6 +12,7 @@ import org.zoocode.jetbrains.core.PluginContext
 import org.zoocode.jetbrains.terminal.TerminalInstance
 import org.zoocode.jetbrains.terminal.TerminalInstanceManager
 import org.zoocode.jetbrains.terminal.TerminalConfig
+import org.zoocode.jetbrains.terminal.decodeTerminalPreserveFocus
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -296,7 +297,9 @@ class MainThreadTerminalService(private val project: Project) : MainThreadTermin
             
             val terminalInstance = getTerminalInstance(id)
             if (terminalInstance != null) {
-                terminalInstance.show(preserveFocus ?: true)
+                // The upstream Terminal.show default is preserveFocus=false, which
+                // requests focus. Only a real true preserves the current focus owner.
+                terminalInstance.show(decodeTerminalPreserveFocus(preserveFocus))
                 logger.info("✅ Terminal shown: $id")
             } else {
                 logger.warn("Terminal does not exist: $id")

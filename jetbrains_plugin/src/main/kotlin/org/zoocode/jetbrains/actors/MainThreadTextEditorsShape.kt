@@ -12,6 +12,7 @@ import com.intellij.openapi.vfs.LocalFileSystem
 import org.zoocode.jetbrains.editor.EditorAndDocManager
 import org.zoocode.jetbrains.editor.Range
 import org.zoocode.jetbrains.editor.createURI
+import org.zoocode.jetbrains.editor.decodePreserveFocus
 import kotlinx.coroutines.delay
 import java.io.File
 
@@ -135,14 +136,15 @@ class MainThreadTextEditors(var project: Project) : MainThreadTextEditorsShape {
     private val logger = Logger.getInstance(MainThreadTextEditors::class.java)
 
     override suspend fun tryShowTextDocument(resource: Map<String, Any?>, options: Any?): Any? {
-        logger.info("Trying to show text document: resource=$resource, options=$options")
+        val preserveFocus = decodePreserveFocus(options)
+        logger.info("Trying to show text document, preserveFocus=$preserveFocus")
         val path = resource["path"] as String? ?: ""
 
         val vfs = LocalFileSystem.getInstance()
         vfs.refreshIoFiles(listOf(File(path)))
         val resourceURI = createURI(resource)
-        val editorHandle = project.getService(EditorAndDocManager::class.java).openEditor(resourceURI)
-        logger.info("Trying to show text document: resource=$resource execution completed" )
+        val editorHandle = project.getService(EditorAndDocManager::class.java).openEditor(resourceURI, preserveFocus)
+        logger.info("Trying to show text document: execution completed")
         return editorHandle.id
     }
     

@@ -14,6 +14,8 @@ import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.terminal.JBTerminalWidget
 import com.intellij.terminal.ui.TerminalWidget
+import com.intellij.ui.content.Content
+import com.intellij.ui.content.ContentManager
 import com.jediterm.terminal.TtyConnector
 import com.pty4j.PtyProcess
 import com.pty4j.PtyProcessBuilder
@@ -21,6 +23,10 @@ import org.zoocode.jetbrains.core.ServiceProxyRegistry
 import org.zoocode.jetbrains.ipc.proxy.IRPCProtocol
 import org.zoocode.jetbrains.ipc.proxy.interfaces.ExtHostTerminalShellIntegrationProxy
 import org.zoocode.jetbrains.ipc.proxy.interfaces.ShellLaunchConfigDto
+import org.zoocode.jetbrains.util.FocusRequestEpoch
+import org.zoocode.jetbrains.util.ManualFocusGuard
+import org.zoocode.jetbrains.util.TerminalCreationFocusGuard
+import org.zoocode.jetbrains.webview.WebViewManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -28,6 +34,7 @@ import kotlinx.coroutines.cancel
 import org.jetbrains.plugins.terminal.LocalTerminalDirectRunner
 import org.jetbrains.plugins.terminal.ShellStartupOptions
 import org.jetbrains.plugins.terminal.ShellTerminalWidget
+import java.awt.Component
 import java.io.IOException
 import java.nio.charset.StandardCharsets
 
@@ -66,6 +73,18 @@ class TerminalInstance(
     // Terminal components
     private var terminalWidget: TerminalWidget? = null
     private var shellWidget: ShellTerminalWidget? = null
+
+    // Content inserted into the Terminal tool window, with its owning manager;
+    // retained so a show request can select this terminal without searching
+    @Volatile
+    private var terminalContent: Content? = null
+
+    @Volatile
+    private var terminalContentManager: ContentManager? = null
+
+    // Bounded show-request invalidation: a newer show or a hide supersedes
+    // queued show work for this instance
+    private val showEpoch = FocusRequestEpoch()
 
     // State management
     private val state = TerminalState()
@@ -133,13 +152,28 @@ class TerminalInstance(
      * Perform initialization steps
      */
     private fun performInitialization() {
+        val focusGuard = try {
+            TerminalCreationFocusGuard(
+                project.getService(WebViewManager::class.java).getLatestWebView()?.browser?.component
+            )
+        } catch (e: Exception) {
+            logger.warn("Could not observe chat focus during terminal creation", e)
+            null
+        }
         try {
             setupShellIntegration()
             createTerminalWidget()
             finalizeInitialization()
         } catch (e: Exception) {
+            runCatching { focusGuard?.close() }.onFailure { logger.warn("Could not close chat focus observation", it) }
             logger.error("❌ Failed to initialize terminal in EDT thread: $extHostTerminalId", e)
             throw e
+        }
+        try {
+            focusGuard?.finish(project, terminalContent?.component)
+        } catch (e: Exception) {
+            runCatching { focusGuard?.close() }.onFailure { logger.warn("Could not close chat focus observation", it) }
+            logger.warn("Could not schedule chat focus restoration after terminal creation", e)
         }
     }
 
@@ -394,7 +428,23 @@ class TerminalInstance(
     }
 
     /**
-     * Show terminal
+     * Show terminal.
+     *
+     * Visibility and focus intent are separate operations. A preserving show
+     * only reveals the tool window. A deliberate show activates the tool window
+     * and then requests widget focus once through the supported
+     * [TerminalWidget.requestFocus] API, with the instance state rechecked
+     * inside the activation callback.
+     *
+     * A deliberate show observes focus-owner moves while it waits in the queue
+     * through a bounded [ManualFocusGuard]: a manual user choice between the
+     * request and its execution cancels the activation. A preserving show is
+     * background work and is not cancelled by a manual move; it never
+     * activates anything.
+     *
+     * The previous [shellWidget].show(preserveFocus) call resolved to
+     * java.awt.Component.show(boolean), which controls visibility only; the
+     * flag was dead code and is removed.
      */
     fun show(preserveFocus: Boolean = false) {
         if (!state.canOperate()) {
@@ -402,13 +452,41 @@ class TerminalInstance(
             return
         }
 
+        val epoch = showEpoch.next()
+        val guard = if (preserveFocus) null else ManualFocusGuard().apply { start() }
         ApplicationManager.getApplication().invokeLater {
             try {
-                showTerminalToolWindow()
-                shellWidget?.show(preserveFocus)
-                logger.info("✅ Terminal shown: $extHostTerminalId")
+                // Recheck lifetime and supersession inside the queued task
+                if (!state.canOperate() || project.isDisposed) {
+                    return@invokeLater
+                }
+                if (!showEpoch.isCurrent(epoch)) {
+                    return@invokeLater
+                }
+                // hide() sets the widget invisible; restore visibility
+                // independently from the focus intent
+                restoreWidgetVisibility(shellWidget)
+                if (preserveFocus) {
+                    showTerminalToolWindow()
+                    selectOwnContent(requestFocus = false)
+                } else {
+                    if (guard?.focusMoved() == true) {
+                        logger.info("Skipped deliberate terminal show: the user moved focus first: $extHostTerminalId")
+                        return@invokeLater
+                    }
+                    activateTerminalToolWindow {
+                        if (!state.canOperate() || project.isDisposed || !showEpoch.isCurrent(epoch)) {
+                            return@activateTerminalToolWindow
+                        }
+                        selectOwnContent(requestFocus = true)
+                        terminalWidget?.requestFocus()
+                    }
+                }
+                logger.info("✅ Terminal shown: $extHostTerminalId, preserveFocus=$preserveFocus")
             } catch (e: Exception) {
                 logger.error("❌ Failed to show terminal: $extHostTerminalId", e)
+            } finally {
+                guard?.close()
             }
         }
     }
@@ -422,8 +500,14 @@ class TerminalInstance(
             return
         }
 
+        // A hide supersedes every queued show: without this, a queued show task
+        // would run after the hide and resurrect visibility and selection
+        showEpoch.invalidate()
         ApplicationManager.getApplication().invokeLater {
             try {
+                if (!state.canOperate() || project.isDisposed) {
+                    return@invokeLater
+                }
                 hideTerminalToolWindow()
                 shellWidget?.hide()
                 logger.info("✅ Terminal hidden: $extHostTerminalId")
@@ -434,7 +518,20 @@ class TerminalInstance(
     }
 
     /**
-     * Show terminal tool window and activate current terminal tab
+     * Select this terminal's content through the supported non-focusing
+     * selection API. Does nothing when the content is gone or moved managers.
+     */
+    private fun selectOwnContent(requestFocus: Boolean) {
+        val content = terminalContent ?: return
+        val manager = terminalContentManager ?: return
+        if (manager.contents.none { it === content }) {
+            return
+        }
+        manager.setSelectedContent(content, requestFocus)
+    }
+
+    /**
+     * Show terminal tool window without activation
      */
     private fun showTerminalToolWindow() {
         try {
@@ -442,6 +539,18 @@ class TerminalInstance(
             toolWindow?.show(null)
         } catch (e: Exception) {
             logger.error("❌ Failed to show terminal tool window", e)
+        }
+    }
+
+    /**
+     * Activate the terminal tool window and run the callback once it is active
+     */
+    private fun activateTerminalToolWindow(whenActive: Runnable) {
+        try {
+            val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(TERMINAL_TOOL_WINDOW_ID)
+            toolWindow?.activate(whenActive)
+        } catch (e: Exception) {
+            logger.error("❌ Failed to activate terminal tool window", e)
         }
     }
 
@@ -466,6 +575,8 @@ class TerminalInstance(
             // Use TerminalToolWindowManager's newTab method to create new Content
             val content = terminalToolWindowManager.newTab(toolWindow, terminalWidget!!)
             content.displayName = config.name ?: DEFAULT_TERMINAL_NAME
+            terminalContent = content
+            terminalContentManager = toolWindow.contentManager
 
             logger.info("✅ Added terminalWidget to Terminal tool window: ${content.displayName}")
         } catch (e: Exception) {
@@ -653,8 +764,28 @@ class TerminalInstance(
     private fun cleanupResources() {
         terminalWidget = null
         shellWidget = null
+        terminalContent = null
+        terminalContentManager = null
     }
 }
+
+/**
+ * Restores widget visibility after a hide. Visibility is independent from the
+ * focus intent: both preserving and deliberate shows need the widget visible.
+ */
+internal fun restoreWidgetVisibility(widget: Component?) {
+    if (widget != null && !widget.isVisible) {
+        widget.isVisible = true
+    }
+}
+
+/**
+ * Decodes the terminal [preserveFocus] show argument. The upstream
+ * Terminal.show default is false, which requests focus; only a real true
+ * preserves the current focus owner. The bridge call site uses this exact
+ * default.
+ */
+internal fun decodeTerminalPreserveFocus(preserveFocus: Boolean?): Boolean = preserveFocus ?: false
 
 /**
  * Terminal configuration data class

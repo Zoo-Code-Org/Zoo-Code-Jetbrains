@@ -27,6 +27,7 @@ import org.zoocode.jetbrains.theme.ThemeManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import org.cef.CefSettings
 import org.cef.browser.CefBrowser
@@ -42,6 +43,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.util.*
+import java.util.concurrent.atomic.AtomicLong
 import javax.swing.SwingUtilities
 import kotlin.io.path.createDirectories
 import kotlin.io.path.exists
@@ -69,6 +71,17 @@ class WebViewManager(var project: Project) : Disposable, ThemeChangeListener {
     @Volatile
     private var latestWebView: WebViewInstance? = null
 
+    // Monotonic generation counter; each registered instance gets the next value
+    private val nextGeneration = AtomicLong(1)
+
+    // Single retirement owner for instances replaced by newer registrations
+    private val retirementTracker = InstanceRetirementTracker<WebViewInstance>()
+
+    // Serializes ownership publication against the shutdown claim, so a
+    // registration that races with dispose either publishes before the claim
+    // and gets disposed, or sees the disposed flag and refuses to create
+    private val ownershipLock = Any()
+
     // Store WebView creation callbacks
     private val creationCallbacks = mutableListOf<WebViewCreationCallback>()
 
@@ -82,7 +95,8 @@ class WebViewManager(var project: Project) : Disposable, ThemeChangeListener {
     // Current theme type
     private var isDarkTheme: Boolean = true
 
-    // Prevent repeated dispose
+    // Prevent repeated dispose; registration and EDT callbacks also read this flag.
+    @Volatile
     private var isDisposed = false
     private var themeInitialized = false
 
@@ -171,10 +185,13 @@ class WebViewManager(var project: Project) : Disposable, ThemeChangeListener {
             }
         }
 
-        // If there is already a latest created WebView, notify immediately
+        // If there is already a latest created WebView, notify immediately.
+        // Recheck inside the EDT task so a retired instance is never delivered.
         latestWebView?.let { webview ->
             ApplicationManager.getApplication().invokeLater {
-                callback.onWebViewCreated(webview)
+                if (!isDisposed && latestWebView === webview) {
+                    callback.onWebViewCreated(webview)
+                }
             }
         }
     }
@@ -190,7 +207,9 @@ class WebViewManager(var project: Project) : Disposable, ThemeChangeListener {
     }
 
     /**
-     * Notify all callbacks that WebView has been created
+     * Notify all callbacks that WebView has been created.
+     * Delivery is rejected when the manager is disposed or when the instance
+     * was already replaced by a newer registration.
      * @param instance Created WebView instance
      */
     private fun notifyWebViewCreated(instance: WebViewInstance) {
@@ -200,6 +219,10 @@ class WebViewManager(var project: Project) : Disposable, ThemeChangeListener {
 
         // Safely call callbacks in UI thread
         ApplicationManager.getApplication().invokeLater {
+            if (isDisposed || latestWebView !== instance) {
+                logger.info("Rejected stale WebView creation delivery, generation=${instance.generation}")
+                return@invokeLater
+            }
             callbacks.forEach { callback ->
                 try {
                     callback.onWebViewCreated(instance)
@@ -214,6 +237,10 @@ class WebViewManager(var project: Project) : Disposable, ThemeChangeListener {
      * Register WebView provider and create WebView instance
      */
     fun registerProvider(data: WebviewViewProviderData) {
+        if (isDisposed) {
+            logger.info("Refused WebView provider registration after shutdown: ${data.viewType}")
+            return
+        }
         logger.info("Register WebView provider and create WebView instance: ${data.viewType}")
         val extension = data.extension
 
@@ -263,20 +290,42 @@ class WebViewManager(var project: Project) : Disposable, ThemeChangeListener {
 
         // When registration event is notified, create a new WebView instance
         val viewId = UUID.randomUUID().toString()
+        val generation = nextGeneration.getAndIncrement()
 
         val title = data.options["title"] as? String ?: data.viewType
         val state = data.options["state"] as? Map<String, Any?> ?: emptyMap()
 
-        val webview = WebViewInstance(data.viewType, viewId, title, state,project,data.extension)
+        val webview = WebViewInstance(data.viewType, viewId, generation, title, state, project, data.extension)
+
+        // Publish identity before resolve delivery: the extension resolves the
+        // view and can assign and load HTML while this call is still in flight.
+        // The disposed recheck under the ownership lock closes the race with a
+        // concurrent shutdown claim.
+        val published = synchronized(ownershipLock) {
+            if (isDisposed) {
+                return@synchronized false
+            }
+            val previous = latestWebView
+            latestWebView = webview
+            if (previous != null) {
+                retirementTracker.track(previous)
+            }
+            // Retire instances superseded twice: they can no longer be the UI's
+            // mounted browser and no handoff will ever dispose them
+            retirementTracker.orphans().forEach { disposeInstance(it) }
+            true
+        }
+        if (!published) {
+            logger.info("Refused WebView instance publication after shutdown: ${data.viewType}")
+            // Disposal of a refused instance uses the same EDT path, outside the lock.
+            disposeInstance(webview)
+            return
+        }
 
         val proxy = protocol.getProxy(ServiceProxyRegistry.ExtHostContext.ExtHostWebviewViews)
         proxy.resolveWebviewView(viewId, data.viewType, title, state, null)
 
-
-        // Set as the latest created WebView
-        latestWebView = webview
-
-        logger.info("Create WebView instance: viewType=${data.viewType}, viewId=$viewId")
+        logger.info("Create WebView instance: viewType=${data.viewType}, viewId=$viewId, generation=$generation")
 
         // Notify callback
         notifyWebViewCreated(webview)
@@ -290,11 +339,69 @@ class WebViewManager(var project: Project) : Disposable, ThemeChangeListener {
     }
 
     /**
+     * Records the instance the tool window currently mounts, so retirement
+     * never disposes a browser that is still on screen.
+     */
+    fun markMountedInstance(instance: WebViewInstance) {
+        if (isDisposed) {
+            return
+        }
+        retirementTracker.markMounted(instance)
+    }
+
+    fun clearMountedInstance(instance: WebViewInstance) {
+        if (isDisposed) {
+            return
+        }
+        retirementTracker.clearMounted(instance)
+    }
+
+    /**
+     * Single retirement entry for a superseded instance. Refuses the
+     * still-current instance, owns the dispose-once decision, and is safe to
+     * call from the EDT mount handoff.
+     */
+    fun retireInstance(instance: WebViewInstance) {
+        if (isDisposed) {
+            return
+        }
+        if (latestWebView === instance) {
+            logger.warn("Refused retirement of the still-current WebView: ${instance.viewType}/${instance.viewId}")
+            return
+        }
+        if (!retirementTracker.retireMounted(instance)) {
+            return
+        }
+        disposeInstance(instance)
+    }
+
+    private fun disposeInstance(instance: WebViewInstance) {
+        if (instance.isDisposed) {
+            return
+        }
+        // Native browser disposal belongs on the EDT; recheck inside the task
+        ApplicationManager.getApplication().invokeLater {
+            if (instance.isDisposed || latestWebView === instance || retirementTracker.isMounted(instance)) {
+                return@invokeLater
+            }
+            try {
+                instance.dispose()
+            } catch (e: Exception) {
+                logger.error("Failed to retire WebView instance ${instance.viewType}/${instance.viewId}", e)
+            }
+        }
+    }
+
+    /**
          * Update the HTML content of the WebView
          * @param data HTML update data
          */
-    fun updateWebViewHtml(data: WebviewHtmlUpdateData) {
-        data.htmlContent = data.htmlContent.replace("/jetbrains/resources/roocode/", "./")
+        fun updateWebViewHtml(data: WebviewHtmlUpdateData) {
+            if (isDisposed) {
+                logger.warn("Refused WebView HTML update after shutdown: handle=${data.handle}")
+                return
+            }
+            data.htmlContent = data.htmlContent.replace("/jetbrains/resources/roocode/", "./")
         data.htmlContent = data.htmlContent.replace("<html lang=\"en\">", "<html lang=\"en\" style=\"background: var(--vscode-sideBar-background);\">")
         val encodedState = getLatestWebView()?.state.toString().replace("\"", "\\\"")
         // Support both <script nonce="..."> and <script type="text/javascript" nonce="..."> formats
@@ -414,7 +521,18 @@ class WebViewManager(var project: Project) : Disposable, ThemeChangeListener {
             logger.info("WebViewManager has already been disposed, ignoring repeated call")
             return
         }
-        isDisposed = true
+        // Claim every manager-owned instance for shutdown: the current one plus
+        // the mounted and retired ones from the tracker. orphans() would skip a
+        // mounted instance superseded by a newer registration that never
+        // mounted, so the shutdown sweep must claim all three states. The
+        // ownership lock makes a racing registration either publish before this
+        // claim (and be claimed) or refuse after the disposed flag is set.
+        val claimed = LinkedHashSet<WebViewInstance>()
+        synchronized(ownershipLock) {
+            isDisposed = true
+            latestWebView?.let { claimed.add(it) }
+            claimed.addAll(retirementTracker.claimAll())
+        }
 
         logger.info("Releasing WebViewManager resources...")
 
@@ -446,10 +564,29 @@ class WebViewManager(var project: Project) : Disposable, ThemeChangeListener {
             logger.error("Failed to clean up index.html file", e)
         }
 
-        try {
-            latestWebView?.dispose()
-        } catch (e: Exception) {
-            logger.error("Failed to release WebView resources", e)
+        // Dispose each claimed instance once, on the EDT, like retirement does.
+        // This sweep cannot consult latestWebView or the tracker again: both
+        // may still be observed by queued pre-shutdown retirement tasks, and
+        // clearing them before those tasks run would change their decisions.
+        // The instance disposed flag makes the dispose-once guarantee.
+        claimed.forEach { instance ->
+            try {
+                if (instance.isDisposed) {
+                    return@forEach
+                }
+                ApplicationManager.getApplication().invokeLater {
+                    if (instance.isDisposed) {
+                        return@invokeLater
+                    }
+                    try {
+                        instance.dispose()
+                    } catch (e: Exception) {
+                        logger.error("Failed to release WebView instance ${instance.viewType}/${instance.viewId} at shutdown", e)
+                    }
+                }
+            } catch (e: Exception) {
+                logger.error("Failed to queue WebView instance release at shutdown", e)
+            }
         }
 
         // Reset theme data
@@ -468,10 +605,14 @@ class WebViewManager(var project: Project) : Disposable, ThemeChangeListener {
 
 /**
  * WebView instance class, encapsulates JCEF browser
+ *
+ * @param generation Manager-assigned monotonic identity; callbacks snapshot it
+ *   so stale deliveries can be rejected after a replacement registration.
  */
 class WebViewInstance(
     val viewType: String,
     val viewId: String,
+    val generation: Long,
     val title: String,
     val state: Map<String, Any?>,
     val project: Project,
@@ -489,7 +630,11 @@ class WebViewInstance(
     }
 
     // WebView state
-    private var isDisposed = false
+    @Volatile
+    private var disposedFlag = false
+
+    val isDisposed: Boolean
+        get() = disposedFlag
 
     // JavaScript query handler for communication with webview
     var jsQuery: JBCefJSQuery? = null
@@ -500,12 +645,23 @@ class WebViewInstance(
     // Coroutine scope
     private val coroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    @Volatile
     private var isPageLoaded = false
+
+    // Increments on every accepted main-frame load start, so EDT work scheduled
+    // from an older navigation can detect that a newer one replaced it
+    private val navigationSequence = AtomicLong()
 
     private var currentThemeConfig: JsonObject? = null
 
     // Callback for page load completion
+    @Volatile
     private var pageLoadCallback: (() -> Unit)? = null
+
+    // Saved handler references; removal at disposal needs the same instances
+    private var consoleDisplayHandler: CefDisplayHandler? = null
+    private var webLoadHandler: CefLoadHandler? = null
+    private var webRequestHandler: CefRequestHandler? = null
 
     init {
         setupJSBridge()
@@ -841,7 +997,7 @@ class WebViewInstance(
             val client = browser.jbCefClient
 
             // Register console message handler
-            client.addDisplayHandler(object: CefDisplayHandlerAdapter() {
+            val displayHandler = object: CefDisplayHandlerAdapter() {
                 override fun onConsoleMessage(
                     browser: CefBrowser?,
                     level: CefSettings.LogSeverity?,
@@ -852,10 +1008,12 @@ class WebViewInstance(
                     logger.debug("WebView console message: [$level] $message (line: $line, source: $source)")
                     return true
                 }
-            }, browser.cefBrowser)
+            }
+            consoleDisplayHandler = displayHandler
+            client.addDisplayHandler(displayHandler, browser.cefBrowser)
 
             // Register load handler
-            client.addLoadHandler(object : CefLoadHandlerAdapter() {
+            val loadHandler = object : CefLoadHandlerAdapter() {
                 override fun onLoadingStateChange(
                     browser: CefBrowser?,
                     isLoading: Boolean,
@@ -870,8 +1028,12 @@ class WebViewInstance(
                     frame: CefFrame?,
                     transitionType: CefRequest.TransitionType?
                 ) {
-                    logger.info("WebView started loading: ${frame?.url}, transition type: $transitionType")
+                    if (!isOwnMainFrame(browser, frame)) {
+                        return
+                    }
+                    logger.info("WebView main frame load started, transition type: $transitionType")
                     isPageLoaded = false
+                    navigationSequence.incrementAndGet()
                 }
 
                 override fun onLoadEnd(
@@ -879,11 +1041,23 @@ class WebViewInstance(
                     frame: CefFrame?,
                     httpStatusCode: Int
                 ) {
-                    logger.info("WebView finished loading: ${frame?.url}, status code: $httpStatusCode")
+                    if (!isOwnMainFrame(browser, frame)) {
+                        return
+                    }
+                    val sequence = navigationSequence.get()
+                    logger.info("WebView main frame finished loading, status code: $httpStatusCode")
                     isPageLoaded = true
-                    injectTheme()
-                    // Notify page load completion
-                    pageLoadCallback?.invoke()
+                    // The load handler runs on a native callback thread. Snapshot the
+                    // navigation sequence and recheck on EDT, so a queued completion
+                    // from an older navigation cannot act after a newer start.
+                    ApplicationManager.getApplication().invokeLater {
+                        if (isDisposed || navigationSequence.get() != sequence) {
+                            return@invokeLater
+                        }
+                        injectTheme()
+                        // Notify page load completion
+                        pageLoadCallback?.invoke()
+                    }
                 }
 
                 override fun onLoadError(
@@ -895,8 +1069,10 @@ class WebViewInstance(
                 ) {
                     logger.info("WebView load error: $failedUrl, error code: $errorCode, error message: $errorText")
                 }
-            }, browser.cefBrowser)
-            client.addRequestHandler(object : CefRequestHandlerAdapter() {
+            }
+            webLoadHandler = loadHandler
+            client.addLoadHandler(loadHandler, browser.cefBrowser)
+            val requestHandler = object : CefRequestHandlerAdapter() {
                 override fun onBeforeBrowse(
                     browser: CefBrowser?,
                     frame: CefFrame?,
@@ -931,11 +1107,28 @@ class WebViewInstance(
                     }
 
                 }
-            }, browser.cefBrowser)
+            }
+            webRequestHandler = requestHandler
+            client.addRequestHandler(requestHandler, browser.cefBrowser)
             logger.info("WebView resource interception enabled: $viewType/$viewId")
         } catch (e: Exception) {
             logger.error("Failed to enable WebView resource interception", e)
         }
+    }
+
+    /**
+     * Accepts a load callback only for this browser's current main frame.
+     * Subframes never change readiness or mount state, and the native frame
+     * object stays inside the callback scope.
+     */
+    private fun isOwnMainFrame(browser: CefBrowser?, frame: CefFrame?): Boolean {
+        if (isDisposed || browser == null || frame == null) {
+            return false
+        }
+        if (browser !== this.browser.cefBrowser) {
+            return false
+        }
+        return frame.isMain
     }
 
     /**
@@ -982,13 +1175,32 @@ class WebViewInstance(
     }
 
     override fun dispose() {
-        if (!isDisposed) {
-            KeyboardFocusManager.getCurrentKeyboardFocusManager()
-                .removeKeyEventDispatcher(zoomKeyEventDispatcher)
-            browser.dispose()
-            isDisposed = true
-            logger.info("WebView instance released: $viewType/$viewId")
+        if (isDisposed) {
+            return
         }
+        // Mark disposed first so queued callbacks and handlers become inert
+        // before any native resource goes away.
+        disposedFlag = true
+        pageLoadCallback = null
+        coroutineScope.cancel()
+        KeyboardFocusManager.getCurrentKeyboardFocusManager()
+            .removeKeyEventDispatcher(zoomKeyEventDispatcher)
+        try {
+            val client = browser.jbCefClient
+            consoleDisplayHandler?.let { client.removeDisplayHandler(it, browser.cefBrowser) }
+            webLoadHandler?.let { client.removeLoadHandler(it, browser.cefBrowser) }
+            webRequestHandler?.let { client.removeRequestHandler(it, browser.cefBrowser) }
+        } catch (e: Exception) {
+            logger.warn("Failed to remove WebView handlers during disposal: $viewType/$viewId", e)
+        }
+        try {
+            jsQuery?.dispose()
+        } catch (e: Exception) {
+            logger.warn("Failed to dispose WebView JS query: $viewType/$viewId", e)
+        }
+        jsQuery = null
+        browser.dispose()
+        logger.info("WebView instance released: $viewType/$viewId, generation=$generation")
     }
 
     private companion object {
@@ -996,5 +1208,80 @@ class WebViewInstance(
         const val ZOOM_STEP = 1.0
         const val MIN_ZOOM_LEVEL = -5.0
         const val MAX_ZOOM_LEVEL = 5.0
+    }
+}
+
+/**
+ * Single retirement owner for instances replaced by newer registrations.
+ * The UI hands back the instance it had mounted; a registration sweep retires
+ * orphans that were never mounted. The mounted instance and the tracked set
+ * are the only ownership state, so every retired instance gets exactly one
+ * disposal decision.
+ */
+internal class InstanceRetirementTracker<T : Any> {
+    private val lock = Any()
+    private val retired = LinkedHashSet<T>()
+    private var mounted: T? = null
+
+    fun track(instance: T) {
+        synchronized(lock) {
+            retired.add(instance)
+        }
+    }
+
+    fun markMounted(instance: T) {
+        synchronized(lock) {
+            mounted = instance
+            retired.remove(instance)
+        }
+    }
+
+    fun clearMounted(instance: T) {
+        synchronized(lock) {
+            if (mounted === instance) {
+                mounted = null
+            }
+        }
+    }
+
+    /**
+     * Retires the instance the UI had mounted. Returns true exactly once, when
+     * this call owns the disposal.
+     */
+    fun retireMounted(instance: T): Boolean {
+        synchronized(lock) {
+            val owns = mounted === instance || retired.contains(instance)
+            if (mounted === instance) {
+                mounted = null
+            }
+            retired.remove(instance)
+            return owns
+        }
+    }
+
+    fun isMounted(instance: T): Boolean = synchronized(lock) { mounted === instance }
+
+    /**
+     * Returns and clears retired instances that can no longer have a mounted
+     * consumer. The mounted instance stays tracked until its handoff.
+     */
+    fun orphans(): List<T> = synchronized(lock) {
+        val result = retired.filter { it !== mounted }
+        retired.removeAll { it !== mounted }
+        result
+    }
+
+    /**
+     * Returns and clears every owned instance: the mounted one and all retired
+     * ones, deduplicated. Shutdown uses this instead of orphans(), because a
+     * mounted instance superseded by a never-mounted newer registration would
+     * otherwise be skipped by the orphan filter and leak.
+     */
+    fun claimAll(): List<T> = synchronized(lock) {
+        val result = LinkedHashSet<T>(retired)
+        mounted?.let { result.add(it) }
+        retired.clear()
+        mounted = null
+        ArrayList(result)
     }
 }

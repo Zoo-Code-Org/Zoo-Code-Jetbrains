@@ -498,6 +498,12 @@ ktlint {
     }
 }
 
+// Run unit tests without a display; Swing components used by the regression
+// tests must initialize in headless mode
+tasks.named<Test>("test") {
+    systemProperty("java.awt.headless", "true")
+}
+
 // Configure detekt
 detekt {
     toolVersion = "1.23.4"
