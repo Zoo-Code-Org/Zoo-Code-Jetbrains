@@ -42,6 +42,12 @@ if ($env:VSCODE_INJECTION -eq "1") {
 	$env:VSCODE_INJECTION = $null
 }
 
+$jetbrainsScript = $env:ORIGINAL_POWERSHELL_SCRIPT
+if ($jetbrainsScript -and (Test-Path -LiteralPath $jetbrainsScript)) {
+    . $jetbrainsScript
+}
+$env:ORIGINAL_POWERSHELL_SCRIPT = $null
+
 $Global:__VSCodeOriginalPrompt = $function:Prompt
 $Global:__LastHistoryId = -1
 $Global:__VSCodeIsInExecution = $false
