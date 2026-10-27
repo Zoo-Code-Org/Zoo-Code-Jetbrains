@@ -269,24 +269,36 @@ class ZooCodeJetBrainsToolWindowFactory : ToolWindowFactory {
 
         private var dragDropHandler: DragDropHandler? = null
 
+        // The WebView instance whose browser component currently fills the panel.
+        // Mount decisions compare instances by identity, never by URL or class.
+        private var mountedWebView: WebViewInstance? = null
+
+        // Placeholder panels registered at construction; removal targets only these
+        private val placeholderPanels = PlaceholderPanels()
+
+        private fun createPlaceholderPanel(): JPanel {
+            val panel = JPanel(BorderLayout()).apply {
+                border = BorderFactory.createEmptyBorder(20, 20, 20, 20)
+                add(placeholderLabel, BorderLayout.CENTER)
+                add(buttonPanel, BorderLayout.SOUTH)
+            }
+            placeholderPanels.register(panel)
+            return panel
+        }
+
         val content: JPanel = JPanel(BorderLayout()).apply {
             contentPanel.layout = BorderLayout()
 
             // Check configuration status and show appropriate content
             if (configManager.isConfigurationLoaded() && configManager.isConfigurationValid()) {
-
-                val initPanel = JPanel(BorderLayout()).apply {
-                    border = BorderFactory.createEmptyBorder(20, 20, 20, 20)
-                    add(placeholderLabel, BorderLayout.CENTER)
-                    add(buttonPanel, BorderLayout.SOUTH)
-                }
-                contentPanel.add(initPanel, BorderLayout.CENTER)
+                contentPanel.add(createPlaceholderPanel(), BorderLayout.CENTER)
             } else {
                 val selectionPanel = JPanel(BorderLayout()).apply {
                     border = BorderFactory.createEmptyBorder(20, 20, 20, 20)
                     add(pluginSelectionPanel, BorderLayout.CENTER)
                     add(configStatusPanel, BorderLayout.SOUTH)
                 }
+                placeholderPanels.register(selectionPanel)
                 contentPanel.add(selectionPanel, BorderLayout.CENTER)
             }
 
@@ -295,12 +307,7 @@ class ZooCodeJetBrainsToolWindowFactory : ToolWindowFactory {
 
         init {
             // Always show system info panel (no plugin selection needed)
-            val initPanel = JPanel(BorderLayout()).apply {
-                border = BorderFactory.createEmptyBorder(20, 20, 20, 20)
-                add(placeholderLabel, BorderLayout.CENTER)
-                add(buttonPanel, BorderLayout.SOUTH)
-            }
-            contentPanel.add(initPanel, BorderLayout.CENTER)
+            contentPanel.add(createPlaceholderPanel(), BorderLayout.CENTER)
 
             // Don't auto-start here - WecoderPlugin will handle startup
             // The plugin will start automatically if configuration is valid
@@ -313,21 +320,18 @@ class ZooCodeJetBrainsToolWindowFactory : ToolWindowFactory {
 
             // Try to get existing WebView
             webViewManager.getLatestWebView()?.let { webView ->
-                // Add WebView component immediately when created
-                ApplicationManager.getApplication().invokeLater {
-                    addWebViewComponent(webView)
-                }
-                // Set page load callback to hide system info only after page is loaded
+                scheduleMountIfCurrent(webView)
+                // Set page load callback to mount only after page is loaded
                 webView.setPageLoadCallback {
                     ApplicationManager.getApplication().invokeLater {
-                        hideSystemInfo()
+                        if (!toolWindow.isDisposed) {
+                            mountWebView(webView)
+                        }
                     }
                 }
-                // If page is already loaded, hide system info immediately
+                // If page is already loaded, mount immediately
                 if (webView.isPageLoaded()) {
-                    ApplicationManager.getApplication().invokeLater {
-                        hideSystemInfo()
-                    }
+                    scheduleMountIfCurrent(webView)
                 }
             }?:webViewManager.addCreationCallback(this, toolWindow.disposable)
         }
@@ -408,68 +412,119 @@ class ZooCodeJetBrainsToolWindowFactory : ToolWindowFactory {
         override fun onWebViewCreated(instance: WebViewInstance) {
             // Add WebView component immediately when created
             ApplicationManager.getApplication().invokeLater {
-                addWebViewComponent(instance)
+                if (!toolWindow.isDisposed) {
+                    mountWebView(instance)
+                }
             }
-            // Set page load callback to hide system info only after page is loaded
+            // Set page load callback to mount only after page is loaded
             instance.setPageLoadCallback {
                 // Ensure UI update in EDT thread
                 ApplicationManager.getApplication().invokeLater {
-                    hideSystemInfo()
+                    if (!toolWindow.isDisposed) {
+                        mountWebView(instance)
+                    }
                 }
             }
         }
 
         /**
-         * Add WebView component to UI
+         * Mounts the WebView when this content still owns the tool window and
+         * the instance is still the manager's current one.
          */
-        private fun addWebViewComponent(webView: WebViewInstance) {
-            logger.info("Adding WebView component to UI: ${webView.viewType}/${webView.viewId}")
+        private fun scheduleMountIfCurrent(webView: WebViewInstance) {
+            ApplicationManager.getApplication().invokeLater {
+                if (toolWindow.isDisposed) {
+                    return@invokeLater
+                }
+                if (webViewManager.getLatestWebView() !== webView) {
+                    return@invokeLater
+                }
+                mountWebView(webView)
+            }
+        }
 
-            // Check if WebView component is already added
-            val components = contentPanel.components
-            for (component in components) {
-                if (component === webView.browser.component) {
-                    logger.info("WebView component already exists in UI")
+        /**
+         * Idempotent mount keyed on instance identity.
+         *
+         * A repeated mount of the already mounted browser detaches nothing and
+         * requests no focus. Only a genuinely replaced browser is detached once,
+         * and the retired instance is disposed at that handoff so its callbacks
+         * cannot touch the hierarchy afterwards.
+         */
+        private fun mountWebView(webView: WebViewInstance) {
+            if (toolWindow.isDisposed) {
+                return
+            }
+            // A late callback from a replaced instance must never touch the hierarchy
+            if (webViewManager.getLatestWebView() !== webView) {
+                logger.info("Skipped mount of replaced WebView: ${webView.viewType}/${webView.viewId}")
+                return
+            }
+
+            val browserComponent = webView.browser.component
+            when (planMount(mountedWebView, webView, browserComponent.parent === contentPanel)) {
+                MountAction.KEEP_MOUNTED -> {
+                    logger.info("WebView already mounted, removing placeholders only: ${webView.viewType}/${webView.viewId}")
+                    removePlaceholderPanels()
                     return
+                }
+                MountAction.REMOUNT_SAME -> {
+                    // The identity shortcut must still honor the actual parent:
+                    // updateUIContent or a theme change can detach the browser
+                    // while mountedWebView still points at this instance.
+                    contentPanel.add(browserComponent, BorderLayout.CENTER)
+                    contentPanel.revalidate()
+                    contentPanel.repaint()
+                    removePlaceholderPanels()
+                    webViewManager.markMountedInstance(webView)
+                    logger.info("WebView remounted after detachment: ${webView.viewType}/${webView.viewId}")
+                    return
+                }
+                MountAction.REPLACE -> {}
+            }
+
+            val replaced = mountedWebView
+            if (replaced != null) {
+                val replacedComponent = replaced.browser.component
+                if (replacedComponent !== browserComponent && replacedComponent.parent === contentPanel) {
+                    contentPanel.remove(replacedComponent)
                 }
             }
 
-            // Add WebView component without removing existing components
-            contentPanel.add(webView.browser.component, BorderLayout.CENTER)
+            if (browserComponent.parent !== contentPanel) {
+                contentPanel.add(browserComponent, BorderLayout.CENTER)
+            }
 
             setupDragAndDropSupport(webView)
 
-            // Relayout
+            removePlaceholderPanels()
+
             contentPanel.revalidate()
             contentPanel.repaint()
+            mountedWebView = webView
+            webViewManager.markMountedInstance(webView)
 
-            logger.info("WebView component added to tool window")
-        }
-
-        /**
-         * Hide system info placeholder
-         */
-        private fun hideSystemInfo() {
-            logger.info("Hiding system info placeholder")
-
-            // Remove all components from content panel except WebView component
-            val components = contentPanel.components
-            for (component in components) {
-                if (component !== webViewManager.getLatestWebView()?.browser?.component) {
-                    contentPanel.remove(component)
+            // The replaced instance has no mounted consumer left; retire it once
+            // here so its browser, handlers, and queued work stop at the handoff
+            if (replaced != null) {
+                try {
+                    webViewManager.retireInstance(replaced)
+                } catch (e: Exception) {
+                    logger.error("Failed to retire replaced WebView instance", e)
                 }
             }
 
-            webViewManager.getLatestWebView()?.let { webView ->
-                contentPanel.remove(webView.browser.component)
-                contentPanel.add(webView.browser.component, BorderLayout.CENTER)
+            logger.info("WebView component mounted: ${webView.viewType}/${webView.viewId}, generation=${webView.generation}")
+        }
+
+        /**
+         * Remove only the placeholder panels registered by this content
+         */
+        private fun removePlaceholderPanels() {
+            if (placeholderPanels.removeAttached(contentPanel)) {
+                contentPanel.revalidate()
+                contentPanel.repaint()
             }
-
-            // Relayout
-            contentPanel.revalidate()
-            contentPanel.repaint()
-
-            logger.info("System info placeholder hidden")
         }
 
         /**
@@ -948,16 +1003,15 @@ class ZooCodeJetBrainsToolWindowFactory : ToolWindowFactory {
                 return
             }
 
+            val unmounted = mountedWebView
             contentPanel.removeAll()
+            // removeAll detached the browser; forget the stale mount reference
+            // and release its mounted marker so a later mount can re-attach it
+            mountedWebView = null
+            unmounted?.let { webViewManager.clearMountedInstance(it) }
 
             // Always show system info panel (Zoo Code is always configured)
-
-            val initPanel = JPanel(BorderLayout()).apply {
-                border = BorderFactory.createEmptyBorder(20, 20, 20, 20)
-                add(placeholderLabel, BorderLayout.CENTER)
-                add(buttonPanel, BorderLayout.SOUTH)
-            }
-            contentPanel.add(initPanel, BorderLayout.CENTER)
+            contentPanel.add(createPlaceholderPanel(), BorderLayout.CENTER)
             logger.info("Showing system info panel - Zoo Code auto-configured")
 
             contentPanel.revalidate()
@@ -1020,5 +1074,53 @@ class ZooCodeJetBrainsToolWindowFactory : ToolWindowFactory {
                 javax.swing.JOptionPane.INFORMATION_MESSAGE
             )
         }
+    }
+}
+
+/**
+ * Mount decision for the tool window content, derived from instance identity
+ * and the actual parent of the browser component.
+ */
+internal enum class MountAction {
+    /** Same instance already attached; only placeholder cleanup is needed. */
+    KEEP_MOUNTED,
+
+    /** Same instance but detached from the panel; attach it again. */
+    REMOUNT_SAME,
+
+    /** A different instance replaces the mounted one. */
+    REPLACE
+}
+
+internal fun <T> planMount(currentMounted: T?, incoming: T, incomingAttached: Boolean): MountAction = when {
+    currentMounted !== incoming -> MountAction.REPLACE
+    incomingAttached -> MountAction.KEEP_MOUNTED
+    else -> MountAction.REMOUNT_SAME
+}
+
+/**
+ * Registration of known placeholder panels. Removal only detaches panels that
+ * are still attached to the given parent and drops entries that left the
+ * hierarchy some other way, so repeated update cycles cannot grow the list.
+ */
+internal class PlaceholderPanels {
+    private val panels = mutableListOf<JPanel>()
+
+    fun register(panel: JPanel) {
+        panels.add(panel)
+    }
+
+    fun removeAttached(parent: javax.swing.JComponent): Boolean {
+        var removed = false
+        val iterator = panels.iterator()
+        while (iterator.hasNext()) {
+            val panel = iterator.next()
+            if (panel.parent === parent) {
+                parent.remove(panel)
+                removed = true
+            }
+            iterator.remove()
+        }
+        return removed
     }
 }

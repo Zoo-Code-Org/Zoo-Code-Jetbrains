@@ -168,7 +168,62 @@ The plugin requires Node.js command line tools to function properly. Node.js exe
 
 ---
 
-## 3. General Troubleshooting Steps
+## 3. Focus Behavior
+
+Measured triggers, fixes, and remaining limits are recorded in
+[the validation report](validation/chat-focus-preservation.md). Raw evidence
+paths in that report are local, ignored build artifacts; the report includes
+the relevant trace excerpts for readers of a clean checkout.
+
+### 3.1 Terminal Creation Focus Restoration
+
+Production terminal creation activates the new terminal and can move Swing
+focus from the chat OSR canvas to `JBTerminalPanel`.
+`TerminalCreationFocusGuard` captures the exact chat owner before
+initialization and restores that owner once after the platform activation
+settles. It restores only when focus ended inside the newly created terminal,
+chat remains visible, and no user click, key, or Tab traversal intervened. The
+guard expires at the callback or 1500 ms after creation; there is no polling or
+permanent listener. Instrumented probes retain pre- and post-creation typing
+with the owner back on the chat OSR canvas, and pure decision tests are in the
+CI allowlist.
+
+Deliberate Terminal user actions are expected platform behavior, not defects.
+The first show of the Terminal tool window, stock new-tab actions outside the
+plugin-owned creation path, and stock tab selection request terminal focus by
+design. The plugin does not wrap these stock actions. The preserving-show and
+deliberate-show harness checks for these paths remain required. macOS, native
+Windows, and other IDE builds remain untested.
+
+### 3.2 Corrected Test Fixture Items
+
+Two earlier harness failures were test-setup defects, not current product
+issues: an IDEA script-launcher warning balloon covered the chat textarea, and
+a harness step clicked the browser retired during webview replacement. The
+fixture now uses the native launcher, waits for smart mode, and references the
+currently mounted browser. No balloon-restoration or permanent focus code was
+added to the plugin. Modal dismissal and visibility-only hide/show still do not
+automatically activate chat.
+
+### 3.3 Intermittent First-Turn Draft Character Loss
+
+Open. Not fixed. Not conclusively attributed. Real provider-backed
+conversations intermittently lose one draft character near the first
+file-editor or diff opening. The latest run completed both turns but failed
+draft preservation: 32/33 characters in the first turn, 6/6 in the follow-up.
+The IDE trace recorded the key release without a matching press, with no
+browser remount and the Swing owner stable on the chat OSR canvas. The
+initiating platform call remains unproven. The same test stream found and fixed
+the separate diff `preserveFocus` decoding bug; the live diff now opens with
+`preserveFocus=true` and chat focus retained. A pure JDK probe
+(`scripts/ui-harness/KeyDropProbe.java`) reproduced release-without-press only
+under deliberate focus churn (4/120; control 0/120); it is analogous evidence,
+not an IDE reproduction. A later passing run does not clear this issue.
+Observed only in the Linux Xvfb/Openbox fixture on IU-253.28294.334. Other
+platforms, builds, and live click races are untested. Trace excerpts and
+failed-run references are in [the validation report](validation/chat-focus-preservation.md).
+
+## 4. General Troubleshooting Steps
 
 If you encounter any of the above issues, follow these general troubleshooting steps:
 
@@ -180,7 +235,7 @@ If you encounter any of the above issues, follow these general troubleshooting s
 
 ---
 
-## 4. Reporting New Issues
+## 5. Reporting New Issues
 
 If you encounter issues not documented here, please report them with the following information:
 

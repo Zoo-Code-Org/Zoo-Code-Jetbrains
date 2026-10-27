@@ -50,27 +50,29 @@ fun registerOpenEditorAPICommands(project: Project,registry: CommandRegistry) {
  */
 class OpenEditorAPICommands(val project: Project) {
     private val logger = Logger.getInstance(OpenEditorAPICommands::class.java)
-    
+
     /**
      * Opens a diff editor to compare two files
      *
      * @param left Map containing URI components for the left file
      * @param right Map containing URI components for the right file
      * @param title Optional title for the diff editor
-     * @param columnOrOptions Optional column or options for the diff editor
+     * @param columnOrOptions Wire `[column, options]` tuple, a direct options map, or null
      * @return null after operation completes
      */
     suspend fun workbench_diff(left: Map<String, Any?>, right : Map<String, Any?>, title : String?,columnOrOptions : Any?): Any?{
+        val preserveFocus = decodeDiffPreserveFocus(columnOrOptions)
         val rightURI = createURI(right)
         val leftURI = createURI(left)
-        logger.info("Opening diff: ${rightURI.path}")
+        logger.info("Opening diff, preserveFocus=$preserveFocus")
         val content1 = createContent(left,project)
         val content2 = createContent(right,project)
         if (content1 != null && content2 != null){
-            project.getService(EditorAndDocManager::class.java).openDiffEditor(leftURI,rightURI,title?:"File Comparison")
+            project.getService(EditorAndDocManager::class.java)
+                .openDiffEditor(leftURI, rightURI, title ?: "File Comparison", preserveFocus)
         }
-        logger.info("Opening diff completed: ${rightURI.path}")
-        return null;
+        logger.info("Opening diff completed")
+        return null
     }
 
     /**
@@ -114,6 +116,58 @@ class OpenEditorAPICommands(val project: Project) {
         }
     }
 }
+
+/**
+ * Decodes the preserveFocus display option.
+ *
+ * The upstream contract treats a missing flag as false, which requests editor
+ * focus. Only a real boolean changes the intent. A malformed value keeps that
+ * default and emits a content-free diagnostic, because the value itself is
+ * never safe to log.
+ *
+ * @param options Display options from the extension host, or null
+ * @return true when the caller asked to keep focus away from the editor
+ */
+fun decodePreserveFocus(options: Any?): Boolean {
+    if (options !is Map<*, *>) return false
+    if (!options.containsKey("preserveFocus")) return false
+    val value = options["preserveFocus"]
+    if (value is Boolean) return value
+    Logger.getInstance("org.zoocode.jetbrains.editor.FocusIntent")
+        .warn("Ignored malformed preserveFocus display option and used the default")
+    return false
+}
+
+/**
+ * vscode.diff is translated by ExtHostApiCommands to _workbench.diff with a
+ * `[column, options]` tuple. Decoding the tuple itself as a map loses preservation.
+ * A direct options map is also accepted; absent or malformed values use false.
+ */
+fun decodeDiffPreserveFocus(columnOrOptions: Any?): Boolean = decodePreserveFocus(
+    if (columnOrOptions is List<*>) columnOrOptions.getOrNull(1) else columnOrOptions
+)
+
+/**
+ * Maps the preservation intent to the platform focus boolean. The
+ * [FileEditorManager.openFile] boolean requests editor focus, so a preserving
+ * open must request the inverse. Both open calls in [EditorAndDocManager] pass
+ * through this mapping.
+ */
+fun editorFocusRequest(preserveFocus: Boolean): Boolean = !preserveFocus
+
+/**
+ * Routing decision for a diff open. A preserving open cannot use the baseline
+ * diff helper, because it ignores its focus argument and closes the right-hand
+ * file first; it opens the chain virtual file through the file editor with
+ * focus false instead. A deliberate open keeps the diff helper behavior.
+ */
+internal enum class DiffOpenPlan {
+    PRESERVE_VIA_FILE_EDITOR,
+    DELIBERATE_VIA_DIFF_HELPER
+}
+
+internal fun diffOpenPlan(preserveFocus: Boolean): DiffOpenPlan =
+    if (preserveFocus) DiffOpenPlan.PRESERVE_VIA_FILE_EDITOR else DiffOpenPlan.DELIBERATE_VIA_DIFF_HELPER
 
 /**
  * Creates a URI object from a map of URI components

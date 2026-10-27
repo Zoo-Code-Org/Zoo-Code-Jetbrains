@@ -208,7 +208,19 @@ class EditorAndDocManager(val project: Project) : Disposable {
     }
 
 
-    suspend fun openEditor(documentUri: URI ,options: ResolvedTextEditorConfiguration = ResolvedTextEditorConfiguration()): EditorHolder {
+    /**
+     * Opens a file editor for the document.
+     *
+     * [preserveFocus] carries the display intent from the extension host. The
+     * [FileEditorManager.openFile] boolean requests editor focus, so a
+     * preserving open must pass its inverse and must never pass preservation
+     * itself.
+     *
+     * @param documentUri URI of the document to open
+     * @param preserveFocus true keeps the current focus owner; absent defaults to false
+     * @param options Editor formatting configuration, separate from display intent
+     */
+    suspend fun openEditor(documentUri: URI, preserveFocus: Boolean = false, options: ResolvedTextEditorConfiguration = ResolvedTextEditorConfiguration()): EditorHolder {
         val fileEditorManager = FileEditorManager.getInstance(project)
         val path = documentUri.path
         var ideaEditor : Array<FileEditor?>? = null
@@ -217,7 +229,9 @@ class EditorAndDocManager(val project: Project) : Disposable {
         val file = vfs.findFileByPath(path)
         file?.let {
             ApplicationManager.getApplication().invokeAndWait {
-                ideaEditor = fileEditorManager.openFile(it, true)
+                if (!project.isDisposed) {
+                    ideaEditor = fileEditorManager.openFile(it, editorFocusRequest(preserveFocus))
+                }
             }
         }
         val eh = getEditorHandleByUri(documentUri,false)
@@ -237,22 +251,47 @@ class EditorAndDocManager(val project: Project) : Disposable {
         return handle
     }
 
-    suspend fun openDiffEditor(left: URI,documentUri: URI,title:String, options: ResolvedTextEditorConfiguration = ResolvedTextEditorConfiguration()): EditorHolder {
+    /**
+     * Opens a diff editor between the left and right documents.
+     *
+     * A preserving open cannot go through [DiffEditorTabFilesManager]: the
+     * baseline helper ignores its focus argument and closes the right-hand
+     * file first, which can remove the current focus target. It opens the
+     * chain virtual file through the file editor with focus false instead.
+     * A deliberate open keeps the existing diff helper behavior.
+     *
+     * @param left URI of the left diff side
+     * @param documentUri URI of the right diff side
+     * @param title Diff editor tab title
+     * @param preserveFocus true keeps the current focus owner; absent defaults to false
+     * @param options Editor formatting configuration, separate from display intent
+     */
+    suspend fun openDiffEditor(left: URI,documentUri: URI,title:String, preserveFocus: Boolean = false, options: ResolvedTextEditorConfiguration = ResolvedTextEditorConfiguration()): EditorHolder {
         val content2 = createContent(documentUri, project)
         val content1 = createContent(left, project,content2?.contentType)
         if (content1 != null && content2 != null){
             val request = SimpleDiffRequest(title, content1, content2, left.path, documentUri.path)
             var ideaEditor : Array<out FileEditor?>? = null
             ApplicationManager.getApplication().invokeAndWait{
-                LocalFileSystem.getInstance().findFileByPath(documentUri.path)
-                    ?.let {
-                        ApplicationManager.getApplication().runReadAction {  FileEditorManager.getInstance(project).closeFile(it) }
-                    }
+                if (!project.isDisposed) {
+                    val requestChain: DiffRequestChain = SimpleDiffRequestChain(request)
+                    val diffFile = ChainDiffVirtualFile(requestChain, DiffBundle.message("label.default.diff.editor.tab.name", *arrayOfNulls<Any>(0)))
+                    when (diffOpenPlan(preserveFocus)) {
+                        DiffOpenPlan.PRESERVE_VIA_FILE_EDITOR -> {
+                            ideaEditor = FileEditorManager.getInstance(project)
+                                .openFile(diffFile, editorFocusRequest(preserveFocus))
+                        }
+                        DiffOpenPlan.DELIBERATE_VIA_DIFF_HELPER -> {
+                            LocalFileSystem.getInstance().findFileByPath(documentUri.path)
+                                ?.let {
+                                    ApplicationManager.getApplication().runReadAction { FileEditorManager.getInstance(project).closeFile(it) }
+                                }
 
-                val diffEditorTabFilesManager = DiffEditorTabFilesManager.getInstance(project)
-                val requestChain: DiffRequestChain = SimpleDiffRequestChain(request)
-                val diffFile = ChainDiffVirtualFile(requestChain, DiffBundle.message("label.default.diff.editor.tab.name", *arrayOfNulls<Any>(0)))
-                ideaEditor = diffEditorTabFilesManager.showDiffFile(diffFile, true)
+                            val diffEditorTabFilesManager = DiffEditorTabFilesManager.getInstance(project)
+                            ideaEditor = diffEditorTabFilesManager.showDiffFile(diffFile, true)
+                        }
+                    }
+                }
             }
             ideaEditor?.let {
                 val handle = sync2ExtHost(documentUri, true, true, options)

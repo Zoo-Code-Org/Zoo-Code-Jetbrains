@@ -87,10 +87,12 @@ jobs:
           mkdir -p plugins/zoo-code/extension
           touch plugins/zoo-code/extension/.keep prodDep.txt
 
-      # The connector tests are pure JVM tests and the focus of these gates.
+      # The connector and focus tests are pure JVM tests and the focus of
+      # these gates. The Gradle test task sets java.awt.headless=true, so the
+      # Swing-based focus regression tests initialize on the headless runner.
       # The platform-fixture tests need a display and the extension payload,
       # which a pull-request build does not assemble.
-      - name: Run the connector tests
+      - name: Run the connector and focus tests
         working-directory: jetbrains_plugin
         shell: bash
         run: >
@@ -101,6 +103,13 @@ jobs:
           --tests "org.zoocode.jetbrains.terminal.TerminalPtyBuilderTest"
           --tests "org.zoocode.jetbrains.terminal.ShellIntegrationOutputStateTest"
           --tests "org.zoocode.jetbrains.terminal.TerminalShellReadinessTest"
+          --tests "org.zoocode.jetbrains.editor.EditorFocusIntentTest"
+          --tests "org.zoocode.jetbrains.terminal.TerminalWidgetVisibilityTest"
+          --tests "org.zoocode.jetbrains.ui.WebViewMountPlanTest"
+          --tests "org.zoocode.jetbrains.util.FocusRequestEpochTest"
+          --tests "org.zoocode.jetbrains.util.ManualFocusGuardTest"
+          --tests "org.zoocode.jetbrains.util.TerminalCreationFocusGuardTest"
+          --tests "org.zoocode.jetbrains.webview.InstanceRetirementTrackerTest"
           --no-configuration-cache
 
       - name: Build the plugin
