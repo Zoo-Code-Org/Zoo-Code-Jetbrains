@@ -126,7 +126,6 @@ The installable plugin is written to the `dist/` directory. Install that ZIP thr
 
 The setup script handles:
 
-- Git LFS initialization
 - Git submodule initialization and updates
 - Dependency installation
 - Patch application
@@ -136,6 +135,7 @@ The build script then:
 
 - Downloads the latest Zoo Code extension from the VS Code Marketplace
 - Builds the Extension Host runtime
+- Generates the VS Code platform archive (`platform.zip`) when a release build needs it and no valid archive is present; the archive is not stored in git and the repository requires no Git LFS
 - Builds the JetBrains plugin with Zoo Code integrated
 - Writes a ready-to-install plugin to the `dist/` directory
 

@@ -1,0 +1,23 @@
+Zoo Code JetBrains Test Report
+=====================
+
+Date: Tue Oct 27 01:52:03 AM UTC 2026
+Test Type: all
+Platform: linux
+Total Failures: 3
+
+Test Configuration:
+- Fail Fast: false
+- Coverage: false
+- Watch Mode: false
+- Verbose: false
+- Dry Run: false
+
+Environment:
+- Node Version: Not found
+- NPM Version: Not found
+- Git Version: git version 2.43.0
+
+Test Results:
+✗ 3 test(s) failed
+

@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "jetbrains_plugin/**"
+      - "scripts/**"
       - ".github/workflows/pr.yml"
 
 permissions:

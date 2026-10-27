@@ -47,7 +47,10 @@ val verificationJavaLauncher = javaToolchains.launcherFor {
 //    - Typically used when running IntelliJ with an Extension Host for live debugging and hot-reloading.
 //
 // 2. "release" — Production build mode (used to generate deployment artifacts)
-//    - Requires platform.zip to exist, which can be retrieved via git-lfs or generated with genPlatform.gradle.
+//    - Packages platform.zip, which the genPlatform task generates from the VS Code
+//      distributions pinned by vscodeVersion in gradle.properties. The archive is not
+//      stored in git; when it is missing or invalid, prepareSandbox depends on
+//      genPlatform and the archive is generated before the sandbox is prepared.
 //    - This file includes the full runtime environment for VSCode plugins (e.g., node_modules, platform.txt).
 //    - The zip is extracted to build/platform/, and its node_modules take precedence over other dependencies.
 //    - Copies compiled extension_host outputs (dist, package.json, node_modules) and plugin resources.
@@ -183,25 +186,45 @@ fun Sync.prepareSandbox() {
         copyAndTrack("src/main/resources/themes/", "${sandboxDir}/${vsCodePluginName}/integrations/theme/default-themes/")
         copyAndTrack("src/main/resources/themes/", "${sandboxDir}/themes/")
 
-        // The platform.zip file required for release mode is associated with the code in ../base/vscode, currently using version 1.100.0. If upgrading this code later
-        // Need to modify the vscodeVersion value in gradle.properties, then execute the task named genPlatform, which will generate a new platform.zip file for submission
-        // To support new architectures, modify according to the logic in genPlatform.gradle script
+        // The platform.zip archive holds the merged node_modules of the four VS Code
+        // distributions pinned by vscodeVersion in gradle.properties. It is not stored
+        // in git: genPlatform builds it, and prepareSandbox depends on that task when
+        // the archive is missing or invalid (for example a stale Git LFS pointer left
+        // by an older checkout). To support new architectures, modify genPlatform.gradle.
         if (debugMode == "release") {
-            // Check if platform.zip file exists and is larger than 1MB, otherwise throw exception
-            val platformZip = File("platform.zip")
-            if (platformZip.exists() && platformZip.length() >= 1024 * 1024) {
+            // Resolved against the project directory: the daemon working directory
+            // is not the project directory.
+            val platformZip = project.file("platform.zip")
+            val platformUsable = platformZip.exists() && platformZip.length() >= 1024 * 1024
+            val platformDir = File("${project.buildDir}/platform")
+            if (platformUsable) {
                 // Extract platform.zip to the platform subdirectory under the project build directory
-                val platformDir = File("${project.buildDir}/platform")
                 platformDir.mkdirs()
                 logger.lifecycle("[prepareSandbox] Extracting platform.zip -> ${platformDir.absolutePath}")
                 copy {
                     from(zipTree(platformZip))
                     into(platformDir)
                 }
-                copyOps.add(platformZip.absolutePath to platformDir.absolutePath)
             } else {
-                throw IllegalStateException("platform.zip file does not exist or is smaller than 1MB. This file is supported through git lfs and needs to be obtained through git lfs")
+                logger.lifecycle("[prepareSandbox] platform.zip is missing or invalid; genPlatform will generate it before the sandbox is prepared")
+                dependsOn(project.tasks.named("genPlatform"))
+                // genPlatform runs before this task, so the archive can only be
+                // extracted at execution time.
+                doFirst {
+                    val generatedZip = project.file("platform.zip")
+                    check(generatedZip.exists() && generatedZip.length() >= 1024 * 1024) {
+                        "genPlatform did not produce a valid platform.zip at ${generatedZip.absolutePath}. " +
+                            "Check network access to update.code.visualstudio.com and the vscodeVersion value in gradle.properties."
+                    }
+                    platformDir.mkdirs()
+                    logger.lifecycle("[prepareSandbox] Extracting platform.zip -> ${platformDir.absolutePath}")
+                    project.copy {
+                        from(zipTree(generatedZip))
+                        into(platformDir)
+                    }
+                }
             }
+            copyOps.add(platformZip.absolutePath to platformDir.absolutePath)
 
             copyAndTrack(File(project.buildDir, "platform/platform.txt"), "${sandboxDir}/")
             // Copy platform node_modules last to ensure it takes precedence over extension_host node_modules

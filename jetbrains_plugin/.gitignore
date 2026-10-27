@@ -4,6 +4,10 @@
 
 .gradle
 build/
+
+# Generated from the VS Code distributions by the genPlatform task; never
+# committed. See build.gradle.kts and genPlatform.gradle.
+/platform.zip
 !gradle/wrapper/gradle-wrapper.jar
 !**/src/main/**/build/
 !**/src/test/**/build/
