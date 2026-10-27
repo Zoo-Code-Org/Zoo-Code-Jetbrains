@@ -153,6 +153,12 @@ ZOO_EXTENSION_VERSION=3.78.0 ./scripts/release.sh --mode release --clean
 - Optimized builds
 - Production-ready artifacts
 - Minimal debug information
+- Packages the VS Code platform archive: when `jetbrains_plugin/platform.zip` is
+  missing or invalid, the build runs the `genPlatform` task, which downloads the
+  four VS Code distributions pinned by `vscodeVersion` in
+  `jetbrains_plugin/gradle.properties` and merges their node_modules. The
+  archive is not stored in git and the repository needs no Git LFS. The
+  generation needs network access to `update.code.visualstudio.com`.
 
 ### Debug Mode
 - Development builds

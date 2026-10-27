@@ -6,8 +6,16 @@ import java.nio.file.*
 import java.security.MessageDigest
 
 
+// Prepare sources in an action, before Zip checks for source files.
+def preparePlatform = tasks.register('preparePlatform') {
+    mustRunAfter(tasks.named('clean'))
+    doLast {
+        download(project)
+    }
+}
+
 tasks.register('genPlatform', Zip) {
-    download(project)
+    dependsOn(preparePlatform)
     from(new File(project.buildDir, "genPlatform/gen"))
     into("")
     destinationDirectory = project.projectDir
