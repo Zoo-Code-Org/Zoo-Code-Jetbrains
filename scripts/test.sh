@@ -121,7 +121,7 @@ parse_test_args() {
                 ;;
         esac
     done
-
+    
     # Validate test type
     case "$TEST_TYPE" in
         "$TEST_ALL"|"$TEST_UNIT"|"$TEST_INTEGRATION"|"$TEST_LINT"|"$TEST_BUILD"|"$TEST_ENV")
@@ -137,24 +137,24 @@ parse_test_args() {
 # Setup test environment
 setup_test_environment() {
     log_step "Setting up test environment..."
-
+    
     # Set CI environment variables
     if [[ "${CI:-false}" == "true" ]]; then
         log_info "Running in CI environment"
         export NODE_ENV="test"
         export CI="true"
     fi
-
+    
     # Set test timeout
     export TEST_TIMEOUT="${TEST_TIMEOUT:-300}"
-
+    
     # Set coverage threshold
     export COVERAGE_THRESHOLD="${COVERAGE_THRESHOLD:-80}"
-
+    
     # Create test output directories
     ensure_dir "$PROJECT_ROOT/test-results"
     ensure_dir "$PROJECT_ROOT/coverage"
-
+    
     log_success "Test environment set up"
 }
 
@@ -163,11 +163,11 @@ run_env_tests() {
     if [[ "$TEST_TYPE" != "$TEST_ENV" && "$TEST_TYPE" != "$TEST_ALL" ]]; then
         return 0
     fi
-
+    
     log_step "Running environment validation tests..."
-
+    
     local test_failures=0
-
+    
     # Test 1: Validate system requirements
     log_info "Testing system requirements..."
     # Subshell contains die, so a failed validation counts instead of aborting
@@ -178,19 +178,19 @@ run_env_tests() {
         test_failures=$((test_failures + 1))
         [[ "$FAIL_FAST" == "true" ]] && return $test_failures
     fi
-
+    
     # Test 2: Check project structure
     log_info "Testing project structure..."
     local required_dirs=("$EXTENSION_HOST_DIR" "$IDEA_DIR" "scripts")
     local structure_ok=true
-
+    
     for dir in "${required_dirs[@]}"; do
         if [[ ! -d "$PROJECT_ROOT/$dir" ]]; then
             log_error "Required directory missing: $dir"
             structure_ok=false
         fi
     done
-
+    
     if [[ "$structure_ok" == "true" ]]; then
         log_success "✓ Project structure test passed"
     else
@@ -198,7 +198,7 @@ run_env_tests() {
         test_failures=$((test_failures + 1))
         [[ "$FAIL_FAST" == "true" ]] && return $test_failures
     fi
-
+    
     # Test 3: Check Git configuration
     log_info "Testing Git configuration..."
     if git rev-parse --git-dir >/dev/null 2>&1; then
@@ -208,7 +208,7 @@ run_env_tests() {
         test_failures=$((test_failures + 1))
         [[ "$FAIL_FAST" == "true" ]] && return $test_failures
     fi
-
+    
     log_info "Environment tests completed with $test_failures failures"
     return $test_failures
 }
@@ -218,17 +218,17 @@ run_lint_tests() {
     if [[ "$TEST_TYPE" != "$TEST_LINT" && "$TEST_TYPE" != "$TEST_ALL" ]]; then
         return 0
     fi
-
+    
     log_step "Running linting tests..."
-
+    
     local test_failures=0
-
+    
     # Test shell scripts with shellcheck if available
     if command_exists "shellcheck"; then
         log_info "Running shellcheck on shell scripts..."
         local shell_files
         shell_files=$(find "$PROJECT_ROOT/scripts" -name "*.sh" -type f)
-
+        
         if [[ -n "$shell_files" ]]; then
             if [[ "$DRY_RUN" == "true" ]]; then
                 log_debug "Would run: shellcheck on shell scripts"
@@ -245,13 +245,13 @@ run_lint_tests() {
     else
         log_warn "shellcheck not found, skipping shell script linting"
     fi
-
+    
     # Test base extension linting
     local base_dir="$PROJECT_ROOT/$EXTENSION_HOST_DIR"
     if [[ -f "$base_dir/package.json" ]]; then
         log_info "Running base extension linting..."
         cd "$base_dir"
-
+        
         if npm run lint --if-present >/dev/null 2>&1; then
             if [[ "$DRY_RUN" == "true" ]]; then
                 log_debug "Would run: npm run lint in base directory"
@@ -268,18 +268,18 @@ run_lint_tests() {
             log_debug "No lint script found in base extension"
         fi
     fi
-
+    
     # Test VSCode extension linting
     local vscode_dir="$PROJECT_ROOT/$VSCODE_SUBMODULE_PATH"
     if [[ -d "$vscode_dir" && -f "$vscode_dir/package.json" ]]; then
         log_info "Running VSCode extension linting..."
         cd "$vscode_dir"
-
+        
         local pkg_manager="npm"
         if command_exists "pnpm" && [[ -f "pnpm-lock.yaml" ]]; then
             pkg_manager="pnpm"
         fi
-
+        
         if $pkg_manager run lint --if-present >/dev/null 2>&1; then
             if [[ "$DRY_RUN" == "true" ]]; then
                 log_debug "Would run: $pkg_manager run lint in VSCode directory"
@@ -296,7 +296,7 @@ run_lint_tests() {
             log_debug "No lint script found in VSCode extension"
         fi
     fi
-
+    
     log_info "Linting tests completed with $test_failures failures"
     return $test_failures
 }
@@ -306,22 +306,22 @@ run_unit_tests() {
     if [[ "$TEST_TYPE" != "$TEST_UNIT" && "$TEST_TYPE" != "$TEST_ALL" ]]; then
         return 0
     fi
-
+    
     log_step "Running unit tests..."
-
+    
     local test_failures=0
-
+    
     # Run base extension unit tests
     local base_dir="$PROJECT_ROOT/$EXTENSION_HOST_DIR"
     if [[ -f "$base_dir/package.json" ]]; then
         log_info "Running base extension unit tests..."
         cd "$base_dir"
-
+        
         local test_cmd="npm test"
         if [[ "$COVERAGE" == "true" ]]; then
             test_cmd="npm run test:coverage"
         fi
-
+        
         if npm run test --if-present >/dev/null 2>&1; then
             if [[ "$DRY_RUN" == "true" ]]; then
                 log_debug "Would run: $test_cmd in base directory"
@@ -338,23 +338,23 @@ run_unit_tests() {
             log_debug "No test script found in base extension"
         fi
     fi
-
+    
     # Run VSCode extension unit tests
     local vscode_dir="$PROJECT_ROOT/$VSCODE_SUBMODULE_PATH"
     if [[ -d "$vscode_dir" && -f "$vscode_dir/package.json" ]]; then
         log_info "Running VSCode extension unit tests..."
         cd "$vscode_dir"
-
+        
         local pkg_manager="npm"
         if command_exists "pnpm" && [[ -f "pnpm-lock.yaml" ]]; then
             pkg_manager="pnpm"
         fi
-
+        
         local test_cmd="$pkg_manager test"
         if [[ "$COVERAGE" == "true" ]]; then
             test_cmd="$pkg_manager run test:coverage"
         fi
-
+        
         if $pkg_manager run test --if-present >/dev/null 2>&1; then
             if [[ "$DRY_RUN" == "true" ]]; then
                 log_debug "Would run: $test_cmd in VSCode directory"
@@ -371,7 +371,7 @@ run_unit_tests() {
             log_debug "No test script found in VSCode extension"
         fi
     fi
-
+    
     log_info "Unit tests completed with $test_failures failures"
     return $test_failures
 }
@@ -381,11 +381,11 @@ run_integration_tests() {
     if [[ "$TEST_TYPE" != "$TEST_INTEGRATION" && "$TEST_TYPE" != "$TEST_ALL" ]]; then
         return 0
     fi
-
+    
     log_step "Running integration tests..."
-
+    
     local test_failures=0
-
+    
     # Test 1: Build integration test
     log_info "Testing build integration..."
     if [[ "$DRY_RUN" == "true" ]]; then
@@ -394,7 +394,7 @@ run_integration_tests() {
         # Try a minimal build to test integration
         local temp_dir
         temp_dir=$(mktemp -d)
-
+        
         if "$SCRIPT_DIR/build.sh" --dry-run >/dev/null 2>&1; then
             log_success "✓ Build integration test passed"
         else
@@ -402,14 +402,14 @@ run_integration_tests() {
             test_failures=$((test_failures + 1))
             [[ "$FAIL_FAST" == "true" ]] && return $test_failures
         fi
-
+        
         rm -rf "$temp_dir"
     fi
-
+    
     # Test 2: Script integration test
     log_info "Testing script integration..."
     local scripts=("setup.sh" "build.sh" "clean.sh")
-
+    
     for script in "${scripts[@]}"; do
         if [[ -f "$SCRIPT_DIR/$script" ]]; then
             if [[ "$DRY_RUN" == "true" ]]; then
@@ -426,8 +426,7 @@ run_integration_tests() {
         fi
     done
 
-
-    # Test 3: Platform archive decoupled from Git LFS (issue #1)
+    # Test 3: Platform archive decoupled from Git LFS
     log_info "Testing platform archive LFS decoupling..."
     local lfs_decoupled=true
 
@@ -441,7 +440,7 @@ run_integration_tests() {
         lfs_decoupled=false
     fi
 
-    if ! grep -q "genPlatform" "$PROJECT_ROOT/$IDEA_DIR/build.gradle.kts" 2>/dev/null; then
+    if ! grep -Fq 'named("genPlatform")' "$PROJECT_ROOT/$IDEA_DIR/build.gradle.kts" 2>/dev/null; then
         log_error "Release builds must wire the genPlatform task for platform.zip generation"
         lfs_decoupled=false
     fi
@@ -458,10 +457,11 @@ run_integration_tests() {
         test_failures=$((test_failures + 1))
         [[ "$FAIL_FAST" == "true" ]] && return $test_failures
     fi
+
     if [[ $test_failures -eq 0 ]]; then
         log_success "✓ Script integration tests passed"
     fi
-
+    
     log_info "Integration tests completed with $test_failures failures"
     return $test_failures
 }
@@ -471,11 +471,11 @@ run_build_tests() {
     if [[ "$TEST_TYPE" != "$TEST_BUILD" && "$TEST_TYPE" != "$TEST_ALL" ]]; then
         return 0
     fi
-
+    
     log_step "Running build validation tests..."
-
+    
     local test_failures=0
-
+    
     # Test 1: Validate build script syntax
     log_info "Testing build script syntax..."
     if [[ "$DRY_RUN" == "true" ]]; then
@@ -489,14 +489,14 @@ run_build_tests() {
             [[ "$FAIL_FAST" == "true" ]] && return $test_failures
         fi
     fi
-
+    
     # Test 2: Validate required build files
     log_info "Testing required build files..."
     local required_files=(
         "$PROJECT_ROOT/$EXTENSION_HOST_DIR/package.json"
         "$PROJECT_ROOT/$IDEA_DIR/build.gradle"
     )
-
+    
     local files_ok=true
     for file in "${required_files[@]}"; do
         if [[ ! -f "$file" && ! -f "${file%.gradle}.kts" ]]; then
@@ -504,7 +504,7 @@ run_build_tests() {
             files_ok=false
         fi
     done
-
+    
     if [[ "$files_ok" == "true" ]]; then
         log_success "✓ Required build files test passed"
     else
@@ -512,7 +512,7 @@ run_build_tests() {
         test_failures=$((test_failures + 1))
         [[ "$FAIL_FAST" == "true" ]] && return $test_failures
     fi
-
+    
     log_info "Build validation tests completed with $test_failures failures"
     return $test_failures
 }
@@ -520,12 +520,13 @@ run_build_tests() {
 # Generate test report
 generate_test_report() {
     local total_failures="$1"
-
+    
     log_step "Generating test report..."
-
+    
     local report_file="$PROJECT_ROOT/test-results/test-report.txt"
-    ensure_dir "$(dirname "$report_file")"
-
+    # Reports are written in dry-run mode too, so their directory must exist.
+    mkdir -p "$(dirname "$report_file")"
+    
     cat > "$report_file" << EOF
 Zoo Code JetBrains Test Report
 =====================
@@ -551,37 +552,37 @@ Test Results:
 $(if [[ $total_failures -eq 0 ]]; then echo "✓ All tests passed"; else echo "✗ $total_failures test(s) failed"; fi)
 
 EOF
-
+    
     log_info "Test report generated: $report_file"
 }
 
 # Show test summary
 show_test_summary() {
     local total_failures="$1"
-
+    
     log_step "Test Summary"
-
+    
     echo ""
     if [[ $total_failures -eq 0 ]]; then
         log_success "All tests passed!"
     else
         log_error "$total_failures test(s) failed"
     fi
-
+    
     log_info "Test type: $TEST_TYPE"
     log_info "Platform: $(get_platform)"
-
+    
     if [[ "$DRY_RUN" == "true" ]]; then
         log_info "Mode: DRY RUN (no tests were actually executed)"
     fi
-
+    
     echo ""
     log_info "Test report: $PROJECT_ROOT/test-results/test-report.txt"
-
+    
     if [[ "$COVERAGE" == "true" ]]; then
         log_info "Coverage reports: $PROJECT_ROOT/coverage/"
     fi
-
+    
     echo ""
 }
 
@@ -591,37 +592,37 @@ main() {
     log_info "Script: $SCRIPT_NAME v$SCRIPT_VERSION"
     log_info "Platform: $(get_platform)"
     log_info "Project root: $PROJECT_ROOT"
-
+    
     # Parse arguments
     parse_test_args "$@"
-
+    
     log_info "Test configuration:"
     log_info "  Type: $TEST_TYPE"
     log_info "  Fail fast: $FAIL_FAST"
     log_info "  Coverage: $COVERAGE"
     log_info "  Watch mode: $WATCH_MODE"
-
+    
     if [[ "$DRY_RUN" == "true" ]]; then
         log_warn "DRY RUN MODE - No tests will be executed"
     fi
-
+    
     # Setup test environment
     setup_test_environment
-
+    
     # Run tests
     local total_failures=0
-
+    
     # Conditional form: a nonzero group status must not abort under set -e
     run_env_tests || total_failures=$((total_failures + $?))
     run_lint_tests || total_failures=$((total_failures + $?))
     run_unit_tests || total_failures=$((total_failures + $?))
     run_integration_tests || total_failures=$((total_failures + $?))
     run_build_tests || total_failures=$((total_failures + $?))
-
+    
     # Generate report and show summary
     generate_test_report "$total_failures"
     show_test_summary "$total_failures"
-
+    
     if [[ $total_failures -eq 0 ]]; then
         log_success "Test process completed successfully!"
         exit 0

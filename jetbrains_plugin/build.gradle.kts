@@ -195,35 +195,27 @@ fun Sync.prepareSandbox() {
             // Resolved against the project directory: the daemon working directory
             // is not the project directory.
             val platformZip = project.file("platform.zip")
-            val platformUsable = platformZip.exists() && platformZip.length() >= 1024 * 1024
+            fun usable() = platformZip.isFile && platformZip.length() >= 1024 * 1024
             val platformDir = File("${project.buildDir}/platform")
-            if (platformUsable) {
-                // Extract platform.zip to the platform subdirectory under the project build directory
+            fun extractPlatform() {
+                check(usable()) {
+                    "genPlatform did not produce a valid platform.zip at ${platformZip.absolutePath}. " +
+                        "Check the genPlatform task output, network access to update.code.visualstudio.com, " +
+                        "and vscodeVersion in gradle.properties."
+                }
                 platformDir.mkdirs()
                 logger.lifecycle("[prepareSandbox] Extracting platform.zip -> ${platformDir.absolutePath}")
-                copy {
+                project.copy {
                     from(zipTree(platformZip))
                     into(platformDir)
                 }
-            } else {
+            }
+            if (!usable()) {
                 logger.lifecycle("[prepareSandbox] platform.zip is missing or invalid; genPlatform will generate it before the sandbox is prepared")
                 dependsOn(project.tasks.named("genPlatform"))
-                // genPlatform runs before this task, so the archive can only be
-                // extracted at execution time.
-                doFirst {
-                    val generatedZip = project.file("platform.zip")
-                    check(generatedZip.exists() && generatedZip.length() >= 1024 * 1024) {
-                        "genPlatform did not produce a valid platform.zip at ${generatedZip.absolutePath}. " +
-                            "Check network access to update.code.visualstudio.com and the vscodeVersion value in gradle.properties."
-                    }
-                    platformDir.mkdirs()
-                    logger.lifecycle("[prepareSandbox] Extracting platform.zip -> ${platformDir.absolutePath}")
-                    project.copy {
-                        from(zipTree(generatedZip))
-                        into(platformDir)
-                    }
-                }
             }
+            // Always extract during execution: clean may remove build/platform.
+            doFirst { extractPlatform() }
             copyOps.add(platformZip.absolutePath to platformDir.absolutePath)
 
             copyAndTrack(File(project.buildDir, "platform/platform.txt"), "${sandboxDir}/")

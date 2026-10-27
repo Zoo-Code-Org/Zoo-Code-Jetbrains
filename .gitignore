@@ -60,3 +60,6 @@ deps/vsix/plugin/*
 .zoo-build/
 dist-with-roo/
 plans/
+
+# Generated test reports
+test-results/

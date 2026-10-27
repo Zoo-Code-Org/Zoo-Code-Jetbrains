@@ -26,6 +26,9 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Check script integration contracts
+        run: ./scripts/test.sh integration --dry-run
+
       # One source of truth: the build number and the pinned archive digest
       # live in jetbrains_plugin/gradle.properties, next to each other.
       - name: Read the centralized verification IDE values
@@ -87,6 +90,23 @@ jobs:
         run: |
           mkdir -p plugins/zoo-code/extension
           touch plugins/zoo-code/extension/.keep prodDep.txt
+
+      - name: Check missing and stale platform archive task graphs
+        working-directory: jetbrains_plugin
+        shell: bash
+        run: |
+          trap 'rm -f platform.zip' EXIT
+          for archive in missing stale; do
+            rm -f platform.zip
+            if [ "$archive" = stale ]; then
+              printf 'version https://git-lfs.github.com/spec/v1\n' > platform.zip
+            fi
+            ./gradlew clean prepareSandbox --dry-run -PdebugMode=release --no-configuration-cache > "$RUNNER_TEMP/platform-graph-$archive.log"
+            cat "$RUNNER_TEMP/platform-graph-$archive.log"
+            grep -Eq '^:genPlatform SKIPPED$' "$RUNNER_TEMP/platform-graph-$archive.log"
+            grep -Eq '^:preparePlatform SKIPPED$' "$RUNNER_TEMP/platform-graph-$archive.log"
+            awk '/^:clean /{c=NR} /^:preparePlatform /{p=NR} END{exit !(c && p && c<p)}' "$RUNNER_TEMP/platform-graph-$archive.log"
+          done
 
       # The connector and focus tests are pure JVM tests and the focus of
       # these gates. The Gradle test task sets java.awt.headless=true, so the
