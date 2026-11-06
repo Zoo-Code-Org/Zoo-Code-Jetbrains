@@ -228,3 +228,66 @@ instrumented pass), `p-tuple-fix-one-key-loss/`, `p-dom-key-loss/`,
 `terminal-reduced-heap-oom/`, `t/`, `g/`, `f/`, `g-native-stale-browser/`,
 unit XML in `review-fixes-unit-results/` and
 `terminal-creation-unit-results/`, and earlier reports `FOCUS_FIX_REPORT*.md`.
+
+## Issue #5 assertion update (2026-11-06)
+
+The checked-in provider-backed harness now additionally requires textarea focus
+and `document.hasFocus()` at every typing sample, plus an increase in streamed
+partial-message events during each turn's typing loop. Exact draft comparisons
+remain required even when focus checks pass. This prevents a preserved draft or
+a non-streaming conversation from passing as sufficient focus evidence.
+
+Validation of this update: `HarnessDriver.java` compiles against the local
+IU-253.28294.334 installation, and `bash -n scripts/ui-harness/run-solheim.sh`
+and `git diff --check` pass. The updated live-provider battery was **not run**;
+these checks do not supersede the latest recorded FAIL or validate the reported
+Windows 11 / WebStorm 2026.2.1 environment. The live-provider mode still requires a
+provider relay token and a window manager as described in the harness README.
+
+## Windows CI setup (2026-11-06)
+
+[Windows chat focus E2E](../../.github/workflows/windows-chat-focus.yml) now builds
+the current checkout with extension 3.84.0 and runs a credential-free provider
+fixture on `windows-2022`, with pinned IDEA 2025.3 and 2026.2.1 Windows archives
+and SHA-256 digests. This tests Windows Server x64; it does not establish behavior
+on Windows 11 or WebStorm. No Windows workflow execution is claimed here.
+
+The PowerShell runner requires an interactive desktop, then checks native typing
+in a standalone Swing window and in the actual React textarea before submitting
+two turns. The local provider emits timed SSE deltas and native completion tool
+calls; it requests no terminal commands or edits. Exact draft preservation,
+sampled textarea/window focus, streamed updates during both typing loops, history
+growth, and completion of both turns are required. Missing snapshots, crashes,
+and timeouts fail. Artifacts include screenshots, focus/key traces, IDE logs,
+provider metadata, the tested commit, IDE build, and plugin archive digest.
+
+The existing observer was updated for the bundled extension's `messageUpdated`
+notifications (with `clineMessage`), retaining the legacy `partialMessage` path.
+It now copies the state message array before observing updates. Browser startup
+selection waits for a loaded, mounted instance after indexing, and failures save
+a screenshot. The live-provider mode remains separate from the fixture mode.
+
+Checks completed locally: four fixture HTTP integration tests pass; the driver
+and desktop probe compile against IU-253.28294.334; the standalone native desktop
+probe passes under Xvfb/Openbox; PowerShell's parser accepts the runner and the
+workflow's Windows scripts; actionlint, shell syntax, and whitespace checks pass.
+Full Windows execution remains pending CI. See the harness README for setup and
+artifact interpretation. These checks do not clear the open product issue.
+
+Local fixture E2E: **PASS**, 87 seconds, on Linux Xvfb/Openbox with
+IU-253.28294.334 and the existing plugin distribution SHA-256
+`4d9b34ca46c4bbe0aba7637181e697da4f1bcbb96590d87efdf99c72ab3865e4`
+(extension 3.84.0). Both turns completed, history grew, partial updates were
+observed in both typing loops, exact drafts survived, and sampled textarea/window
+focus stayed intact. Evidence is local at
+`/tmp/zoo-solheim-e2e.jZElagBw/evidence/p/`; provider metadata is at
+`/tmp/zoo-issue5-provider-4.jsonl`. These are temporary local artifacts, not
+checked-in evidence. The Windows job instead builds and tests the current
+checkout; this local run does not validate its packaged product code on Windows.
+
+Earlier local attempts are retained as failures: one warning balloon blocked
+native input; one startup attempt had no DOM snapshot; one reached the second
+turn but lost DOM snapshot delivery. That intermediate run also used the old
+stream observer. The passing run is evidence that the corrected scenario works,
+not a claim that startup/snapshot failures or the original product issue are
+resolved. Windows CI must pass without retrying or discarding failed samples.
