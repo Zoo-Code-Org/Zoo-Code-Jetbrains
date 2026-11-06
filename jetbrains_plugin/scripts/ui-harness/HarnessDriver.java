@@ -135,9 +135,27 @@ public final class HarnessDriver implements AppLifecycleListener {
     private boolean addTitleHandler(Object jbCefBrowser, Object cefBrowser, AtomicReference<String> capturedTitle) {
         try {
             Object jbCefClient = invoke(jbCefBrowser, "getJBCefClient");
-            Class<?> handlerIfc = Class.forName("org.cef.handler.CefDisplayHandler");
+            // Newer IDEs isolate JCEF from this test plugin's class loader.
+            // Use the interface exposed by the running client's API so the proxy
+            // has the exact type identity required by addDisplayHandler.
+            Method register = null;
+            for (Method method : jbCefClient.getClass().getMethods()) {
+                Class<?>[] parameters = method.getParameterTypes();
+                if (method.getName().equals("addDisplayHandler") && parameters.length == 2 &&
+                        parameters[0].getName().equals("org.cef.handler.CefDisplayHandler")) {
+                    register = method;
+                    break;
+                }
+            }
+            if (register == null) throw new IllegalStateException("JCEF addDisplayHandler API unavailable");
+            Class<?> handlerIfc = register.getParameterTypes()[0];
             Object proxy = Proxy.newProxyInstance(handlerIfc.getClassLoader(), new Class<?>[]{handlerIfc},
                     (p, m, a) -> {
+                        if (m.getDeclaringClass() == Object.class) {
+                            if (m.getName().equals("hashCode")) return System.identityHashCode(p);
+                            if (m.getName().equals("equals")) return p == a[0];
+                            if (m.getName().equals("toString")) return "Zoo focus harness display handler";
+                        }
                         if ("onTitleChange".equals(m.getName()) && a.length >= 2 && a[1] instanceof String) {
                             capturedTitle.set((String) a[1]);
                             if (((String)a[1]).startsWith("ZFE2E:")) {
@@ -165,17 +183,8 @@ public final class HarnessDriver implements AppLifecycleListener {
                         }
                         return null;
                     });
-            for (Method m : jbCefClient.getClass().getMethods()) {
-                if (m.getName().equals("addDisplayHandler")) {
-                    Class<?>[] pt = m.getParameterTypes();
-                    if (pt.length == 2 && pt[0].isAssignableFrom(handlerIfc)) {
-                        m.invoke(jbCefClient, proxy, cefBrowser);
-                        return true;
-                    }
-                }
-            }
-            LOG.warn("addDisplayHandler not found on " + jbCefClient.getClass());
-            return false;
+            register.invoke(jbCefClient, proxy, cefBrowser);
+            return true;
         } catch (Throwable t) {
             LOG.warn("title handler attach failed", t);
             return false;
@@ -263,7 +272,9 @@ public final class HarnessDriver implements AppLifecycleListener {
         if (webview == null) throw new IllegalStateException("No loaded, mounted chat browser after indexing");
         Object browser = field(webview, "browser");
         AtomicReference<String> title = new AtomicReference<>();
-        addTitleHandler(browser, invoke(browser, "getCefBrowser"), title);
+        if (!addTitleHandler(browser, invoke(browser, "getCefBrowser"), title)) {
+            throw new IllegalStateException("Cannot register JCEF snapshot handler; see IDE log for cause");
+        }
         invoke(webview, "executeJavaScript", "window.__focusE2E={messages:[],events:0,partial:0};window.addEventListener('message',e=>{let d=e.data,z=window.__focusE2E;if(!d)return;z.events++;if(d.type==='state'&&d.state){if(d.state.clineMessages)z.messages=d.state.clineMessages.slice();z.provider=d.state.apiConfiguration&&d.state.apiConfiguration.apiProvider;}if(d.type==='messageUpdated'||d.type==='partialMessage'){let m=d.clineMessage||d.partialMessage;if(m){if(m.partial)z.partial++;let i=z.messages.findIndex(x=>x.ts===m.ts);if(i>=0)z.messages[i]=m;else z.messages.push(m);}}});");
         invoke(webview,"executeJavaScript","window.__focusNodeSeq=0;function e2eNode(e){if(!e)return null;if(!e.__e2eid)e.__e2eid=++window.__focusNodeSeq;return e.tagName+'@'+e.__e2eid;}for(let kind of ['keydown','input','focusin','focusout'])document.addEventListener(kind,e=>{if(kind==='keydown'&&!['x','y'].includes(e.key))return;console.info('E2EKEY:'+JSON.stringify({kind,ts:Date.now(),key:e.key||null,mod:e.ctrlKey||e.altKey||e.metaKey||false,node:e2eNode(e.target),active:e2eNode(document.activeElement),hasFocus:document.hasFocus(),length:typeof e.target.value==='string'?e.target.value.length:null}));},true);for(let kind of ['focus','blur'])window.addEventListener(kind,e=>console.info('E2EWINDOW:'+JSON.stringify({kind,ts:Date.now(),active:e2eNode(document.activeElement),hasFocus:document.hasFocus()})),true);");
         realSend(webview, "{\"type\":\"webviewDidLaunch\"}");
