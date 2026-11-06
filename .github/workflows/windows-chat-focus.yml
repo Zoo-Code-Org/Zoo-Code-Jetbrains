@@ -2,9 +2,6 @@ name: Windows chat focus E2E
 
 on:
   workflow_dispatch:
-  # Bootstrap this new workflow before it exists on the default branch.
-  push:
-    branches: ["issue/5"]
   pull_request:
     paths:
       - ".github/workflows/windows-chat-focus.yml"
@@ -24,11 +21,14 @@ concurrency:
 jobs:
   build:
     name: Build this checkout with the pinned extension
-    runs-on: ubuntu-latest
+    # Keep native dependency builds independent of ubuntu-latest image changes.
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
       # Match the extension used in the existing focus investigation.
       ZOO_EXTENSION_VERSION: "3.84.0"
+      # This job packages the plugin; headful tests use the IDE's bundled JCEF.
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
     steps:
       - uses: actions/checkout@v5
         with:

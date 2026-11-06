@@ -61,7 +61,9 @@ try {
     $plugins = Join-Path $runDir 'plugins'
     $driverLib = Join-Path $plugins 'harness-driver/lib'
     New-Item -ItemType Directory -Force $driverLib | Out-Null
-    Invoke-CheckedNative "$javaBin/jar.exe" @('cf', "$driverLib/driver.jar", '-C', $classes, '.')
+    # The IDE's bundled JBR includes javac but may omit the jar executable.
+    # A plugin JAR is a ZIP with classes and META-INF/plugin.xml at its root.
+    [IO.Compression.ZipFile]::CreateFromDirectory($classes, "$driverLib/driver.jar")
     Expand-Archive -LiteralPath $PluginZip -DestinationPath $plugins
     if (-not (Test-Path "$plugins/ZooCode/runtime/extension.js")) {
         throw 'Distribution must contain the release extension-host runtime; build with debugMode=release.'
@@ -98,7 +100,9 @@ idea.plugins.path=$profilePath/plugins
     # Refuse to use a stale provider left by another run.
     $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 19487)
     try { $listener.Start() } finally { $listener.Stop() }
-    $fixtureProcess = Start-Process -FilePath 'python' -ArgumentList @(
+    # A separate visible Python console can cover the IDE and consume Robot keys.
+    # Keep the provider alive without creating a foreground test obstacle.
+    $fixtureProcess = Start-Process -FilePath 'python' -WindowStyle Hidden -ArgumentList @(
         "`"$PSScriptRoot/streaming_fixture.py`"", '--log', "`"$EvidenceDir/provider.jsonl`""
     ) -PassThru -RedirectStandardOutput "$EvidenceDir/provider-stdout.log" -RedirectStandardError "$EvidenceDir/provider-stderr.log"
     $ready = $false
@@ -120,7 +124,15 @@ idea.plugins.path=$profilePath/plugins
     }
     if (-not (Test-Path $statusPath)) { throw "E2E timed out after $DeadlineSeconds seconds" }
     $status = (Get-Content $statusPath -Raw).Trim()
-    if ($status -ne 'PASS') { throw "Chat focus E2E result: $status (see evidence.json and progress.log)" }
+    if ($status -ne 'PASS') {
+        $failureReason = 'See evidence.json and progress.log'
+        $evidenceJson = Join-Path $EvidenceDir 'evidence.json'
+        if (Test-Path $evidenceJson) {
+            $checks = (Get-Content $evidenceJson -Raw | ConvertFrom-Json).checks
+            if ($checks.failReason) { $failureReason = $checks.failReason }
+        }
+        throw "Chat focus E2E result: ${status}: $failureReason"
+    }
     $events = @(Get-Content "$EvidenceDir/provider.jsonl" | ForEach-Object { $_ | ConvertFrom-Json })
     if (@($events | Where-Object event -eq 'completed').Count -lt 2) {
         throw 'Expected at least two completed provider streams'

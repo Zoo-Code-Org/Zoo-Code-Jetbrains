@@ -103,7 +103,7 @@ nothing.
 
 `.github/workflows/windows-chat-focus.yml` builds the plugin from the tested
 checkout with Zoo Code extension **3.84.0**, then runs the same Java driver on
-`windows-2022` with IntelliJ **2025.3** and **2026.2.1**. It runs on pushes to `issue/5` and for pull requests
+`windows-2022` with IntelliJ **2025.3** and **2026.2.1**. It runs for pull requests
 that change the harness or relevant implementation, and supports manual dispatch
 once the workflow exists on the default branch. It does not publish a plugin.
 The IDE archives include JBR/JCEF; their SHA-256 is checked against JetBrains'
