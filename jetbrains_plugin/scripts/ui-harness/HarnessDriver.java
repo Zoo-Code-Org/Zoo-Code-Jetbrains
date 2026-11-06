@@ -46,12 +46,19 @@ public final class HarnessDriver implements AppLifecycleListener {
     private static final java.util.regex.Pattern FIXTURE_COMMAND = java.util.regex.Pattern.compile(
         "printf SOLHEIM_(FIRST|SECOND|THIRD)(; sleep [0-9]+)?(; cat src/Main\\.java)?");
     private long lastApprovedTs = -1;
+    private final java.util.Set<String> approvedCommands = new java.util.HashSet<>();
     private final boolean fixtureMode = Boolean.getBoolean("zoo.harness.fixture");
+    private final boolean windowsLive = !fixtureMode && System.getProperty("os.name", "").startsWith("Windows");
+
+    private String windowsCommand(String step) {
+        return "powershell.exe -NoProfile -File .focus-ci/" + step + ".ps1";
+    }
 
     private final Object evidenceLock = new Object();
     private Path evidenceDir;
     private Path progressLog;
     private List<String> checks = new ArrayList<>();
+    private volatile boolean startupComplete;
 
     @Override
     public void appFrameCreated(List<String> commandLineArgs) {
@@ -270,6 +277,7 @@ public final class HarnessDriver implements AppLifecycleListener {
             return showing[0] ? candidate : null;
         });
         if (webview == null) throw new IllegalStateException("No loaded, mounted chat browser after indexing");
+        startupComplete = true;
         Object browser = field(webview, "browser");
         AtomicReference<String> title = new AtomicReference<>();
         if (!addTitleHandler(browser, invoke(browser, "getCefBrowser"), title)) {
@@ -291,6 +299,7 @@ public final class HarnessDriver implements AppLifecycleListener {
         if (fixtureMode) config.addProperty("text", "focus-fixture");
         realSend(webview, config.toString());
         realSend(webview, "{\"type\":\"updateSettings\",\"updatedSettings\":{\"autoApprovalEnabled\":true,\"alwaysAllowReadOnly\":true,\"alwaysAllowWrite\":true,\"alwaysAllowExecute\":true,\"allowedCommands\":[\"printf\",\"sleep\",\"cat\",\"pwd\"],\"terminalShellIntegrationDisabled\":false,\"destructiveCommandGuardEnabled\":false,\"maxRequests\":20,\"telemetrySetting\":\"disabled\"}}");
+        if (!fixtureMode) realSend(webview, "{\"type\":\"updateSettings\",\"updatedSettings\":{\"alwaysAllowExecute\":false}}");
         realSend(webview, "{\"type\":\"didShowAnnouncement\"}");
         invoke(webview, "executeJavaScript", "[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Close')?.click();");
         JsonObject snap = null;
@@ -308,7 +317,7 @@ public final class HarnessDriver implements AppLifecycleListener {
         snap = realSnapshot(webview,title);
         screenshot("p-configured");
         clickInBrowser(browser, snap.getAsJsonObject("rect"));
-        if (fixtureMode) {
+        {
             typeText("smoke");
             Thread.sleep(500);
             JsonObject smoke = realSnapshot(webview, title);
@@ -325,8 +334,9 @@ public final class HarnessDriver implements AppLifecycleListener {
             Thread.sleep(300);
         }
         Toolkit.getDefaultToolkit().getSystemClipboard().setContents(
-            new java.awt.datatransfer.StringSelection(fixtureMode ? "Stream the fixture response and finish with attempt_completion." : "Use tools in this throwaway workspace: execute_command printf SOLHEIM_FIRST; sleep 5. Read src/Main.java, then apply_diff replacing throwaway with solheim_e2e. Execute printf SOLHEIM_SECOND; sleep 5; cat src/Main.java. No files outside this workspace. Briefly explain each step and finish with attempt_completion. Do not ask questions."),null);
+            new java.awt.datatransfer.StringSelection(fixtureMode ? "Stream the fixture response and finish with attempt_completion." : windowsLive ? "Use tools in this throwaway Windows workspace. Run execute_command with exactly: " + windowsCommand("first") + ". Read src/Main.java, then use apply_diff to replace throwaway with solheim_e2e. Run execute_command with exactly: " + windowsCommand("second") + ". Do not edit .focus-ci or files outside this workspace. Explain each step and finish with attempt_completion. Do not ask questions." : "Use tools in this throwaway workspace: execute_command printf SOLHEIM_FIRST; sleep 5. Read src/Main.java, then apply_diff replacing throwaway with solheim_e2e. Execute printf SOLHEIM_SECOND; sleep 5; cat src/Main.java. No files outside this workspace. Briefly explain each step and finish with attempt_completion. Do not ask questions."),null);
         Robot robot = new Robot();
+        robot.setAutoDelay(90);
         robot.keyPress(KeyEvent.VK_CONTROL); robot.keyPress(KeyEvent.VK_V);
         robot.keyRelease(KeyEvent.VK_V); robot.keyRelease(KeyEvent.VK_CONTROL);
         Thread.sleep(1000);
@@ -359,8 +369,7 @@ public final class HarnessDriver implements AppLifecycleListener {
             record("P_owner_"+sample,swingFocusOwnerIdentity());
             if (!exact) record("P_typingLossAtSample",sample);
             String ask=snap.get("lastAsk").isJsonNull()?"":snap.get("lastAsk").getAsString();
-            String say=snap.get("lastSay").isJsonNull()?"":snap.get("lastSay").getAsString();
-            if (("completion_result".equals(ask)||"completion_result".equals(say)) && !snap.get("lastPartial").getAsBoolean()) {completed=true;break;}
+            if ("completion_result".equals(ask) && !snap.get("lastPartial").getAsBoolean()) {completed=true;break;}
             if (!answerCommandAsk(webview, snap, ask)) return;
         }
         record("P_realTaskCompleted",completed);
@@ -374,11 +383,20 @@ public final class HarnessDriver implements AppLifecycleListener {
         boolean followupStreamed=false;
         if (completed) {
             mark("P-followup-user-turn");
-            Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new java.awt.datatransfer.StringSelection(
-                fixtureMode ? "Stream a second fixture response and finish with attempt_completion." : "Run printf SOLHEIM_THIRD; sleep 5 in this workspace and finish with attempt_completion. Do not change files."),null);
+            String followupPrompt = fixtureMode ? "Stream a second fixture response and finish with attempt_completion." : windowsLive ? "Run execute_command with exactly: " + windowsCommand("third") + ". Do not change any files. Finish with attempt_completion." : "Run printf SOLHEIM_THIRD; sleep 5 in this workspace and finish with attempt_completion. Do not change files.";
+            // A new user turn starts with a deliberate click. Never refocus inside
+            // either draft-preservation loop or repair a failed typing sample.
+            clickInBrowser(browser, snap.getAsJsonObject("rect"));
+            Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new java.awt.datatransfer.StringSelection(followupPrompt),null);
             robot.keyPress(KeyEvent.VK_CONTROL);robot.keyPress(KeyEvent.VK_A);robot.keyRelease(KeyEvent.VK_A);robot.keyRelease(KeyEvent.VK_CONTROL);
             robot.keyPress(KeyEvent.VK_CONTROL);robot.keyPress(KeyEvent.VK_V);robot.keyRelease(KeyEvent.VK_V);robot.keyRelease(KeyEvent.VK_CONTROL);
             Thread.sleep(800);
+            snap=realSnapshot(webview,title);
+            record("P_followupPromptEntered",snap);
+            if (!followupPrompt.equals(snap.get("value").isJsonNull()?null:snap.get("value").getAsString())) {
+                fail("followupPromptMismatch", "Native paste did not enter the requested followup; refusing to submit a draft");
+                return;
+            }
             robot.keyPress(KeyEvent.VK_ENTER);robot.keyRelease(KeyEvent.VK_ENTER);
             Thread.sleep(2000);
             expected="";completed=false;
@@ -399,6 +417,11 @@ public final class HarnessDriver implements AppLifecycleListener {
             }
             followupStreamed=snap.get("partial").getAsInt()>initialPartial;
         }
+        boolean commandsCovered = fixtureMode || (windowsLive
+                ? approvedCommands.containsAll(java.util.Arrays.asList(windowsCommand("first"), windowsCommand("second"), windowsCommand("third")))
+                : java.util.Arrays.asList("SOLHEIM_FIRST", "SOLHEIM_SECOND", "SOLHEIM_THIRD").stream()
+                    .allMatch(marker -> approvedCommands.stream().anyMatch(command -> command.contains(marker))));
+        record("P_requiredCommandsApproved",commandsCovered);
         record("P_followupCompleted",completed);
         record("P_bothTurnsTypingSurvived",typingHealthy);
         record("P_bothTurnsFocusPreserved",focusHealthy);
@@ -407,7 +430,7 @@ public final class HarnessDriver implements AppLifecycleListener {
         if (!fixtureMode) record("P_fixtureChanged",fixtureChanged);
         record("providerMode",fixtureMode ? "local-streaming-fixture" : "live-solheim");
         screenshot("p-real-conversation");
-        finish(fixtureMode ? "testP-streaming-fixture" : "testP-real-solheim-conversation", firstCompleted&&completed&&typingHealthy&&focusHealthy&&firstStreamed&&followupStreamed&&historyGrew&&fixtureChanged?"PASS":"FAIL-REAL-CONVERSATION");
+        finish(fixtureMode ? "testP-streaming-fixture" : "testP-real-solheim-conversation", firstCompleted&&completed&&commandsCovered&&typingHealthy&&focusHealthy&&firstStreamed&&followupStreamed&&historyGrew&&fixtureChanged?"PASS":"FAIL-REAL-CONVERSATION");
     }
 
     private void clickInBrowser(Object jbCefBrowser, JsonObject rect) throws Exception {
@@ -473,8 +496,9 @@ public final class HarnessDriver implements AppLifecycleListener {
 
     private void dismissStartupDialogs(int seconds) {
         long deadline = System.currentTimeMillis() + seconds * 1000L;
-        while (System.currentTimeMillis() < deadline) {
+        while (!startupComplete && System.currentTimeMillis() < deadline) {
             runOnEdt(() -> {
+                if (startupComplete) return;
                 for (Window w : Window.getWindows()) {
                     if (!(w instanceof Dialog) || !w.isShowing() || (w instanceof JFrame)) {
                         continue;
@@ -491,6 +515,13 @@ public final class HarnessDriver implements AppLifecycleListener {
     }
 
     private void handleDialog(Dialog d) {
+        com.intellij.openapi.ui.DialogWrapper wrapper = com.intellij.openapi.ui.DialogWrapper.findInstance(d);
+        if (wrapper != null && (wrapper.getClass().getName().startsWith("com.intellij.llmInstaller.ui.promo") ||
+                containsAiPromotion(d))) {
+            log("Cancelling startup AI promotion: " + wrapper.getClass().getName());
+            wrapper.close(com.intellij.openapi.ui.DialogWrapper.CANCEL_EXIT_CODE);
+            return;
+        }
         List<JButton> buttons = new ArrayList<>();
         List<JCheckBox> boxes = new ArrayList<>();
         collect(d, buttons, boxes);
@@ -512,6 +543,21 @@ public final class HarnessDriver implements AppLifecycleListener {
                 }
             }
         }
+    }
+
+    private boolean containsAiPromotion(Component component) {
+        if (component.getClass().getName().startsWith("com.intellij.llmInstaller.ui.promo")) return true;
+        if (component instanceof JLabel) {
+            String text = ((JLabel) component).getText();
+            if (text != null && (text.contains("WebStorm Goes AI") ||
+                    text.contains("Unlock next-level development with free AI"))) return true;
+        }
+        if (component instanceof Container) {
+            for (Component child : ((Container) component).getComponents()) {
+                if (containsAiPromotion(child)) return true;
+            }
+        }
+        return false;
     }
 
     private void collect(Component c, List<JButton> buttons, List<JCheckBox> boxes) {
@@ -664,13 +710,18 @@ public final class HarnessDriver implements AppLifecycleListener {
             JsonElement text = snap.get("lastText");
             JsonElement tsValue = snap.get("lastTs");
             String command = text == null || text.isJsonNull() ? "" : text.getAsString().trim();
-            if (!FIXTURE_COMMAND.matcher(command).matches()) {
+            boolean allowed = windowsLive
+                    ? java.util.Arrays.asList(windowsCommand("first"), windowsCommand("second"), windowsCommand("third")).contains(command)
+                    : FIXTURE_COMMAND.matcher(command).matches();
+            if (!allowed) {
                 fail("unexpectedCommand", "Refused a command outside the fixture: " + command);
                 return false;
             }
             long ts = tsValue == null || tsValue.isJsonNull() ? -1 : tsValue.getAsLong();
             if (ts >= 0 && ts == lastApprovedTs) return true;
             lastApprovedTs = ts;
+            approvedCommands.add(command);
+            record("P_approvedCommand", command);
         } else if (!"command_output".equals(ask)) {
             return true;
         }

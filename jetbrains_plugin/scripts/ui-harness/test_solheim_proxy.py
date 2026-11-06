@@ -29,6 +29,17 @@ class RelayAccessTest(unittest.TestCase):
             upstream.assert_not_called()
             return response.status
 
+    def test_local_health_is_authenticated_and_does_not_contact_upstream(self):
+        for token, expected in [('wrong', 401), (relay.TOKEN, 200)]:
+            connection = http.client.HTTPConnection('127.0.0.1', self.server.server_port)
+            with patch.object(relay.urllib.request, 'urlopen') as upstream:
+                connection.request('GET', '/v1/health', headers={'Authorization': 'Bearer ' + token})
+                response = connection.getresponse()
+                self.assertEqual(expected, response.status)
+                response.read()
+                upstream.assert_not_called()
+            connection.close()
+
     def test_missing_token(self):
         self.assertEqual(401, self.request({}))
 

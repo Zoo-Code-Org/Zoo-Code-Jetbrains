@@ -161,3 +161,63 @@ with `HARNESS_FIXTURE=true` (the relay token is then unnecessary). Start
 the IDE/plugin/window-manager variables from the manual setup above. Set the
 fixture flag through this environment variable, not `JAVA_TOOL_OPTIONS`, which
 can display an IDE warning balloon covering the input.
+
+## Maintainer-approved live Solheim testing on Windows
+
+The `live-solheim` job in the Windows focus workflow uses the protected GitHub
+Environment **solheim** with the Environment secret **SOLHEIM_API_KEY**. Required
+reviewers must approve the exact tested commit before it receives the key. It
+runs only when a PR has the **live-solheim** label, or a manual dispatch selects
+`live_solheim`. Manual dispatch is available after this workflow is on the
+default branch; the label enables testing this PR before merging.
+
+The job first requires the credential-free matrix to pass. It downloads pinned
+WebStorm **2026.2.1**, then runs three fresh two-turn conversations with the real
+Solheim `qwen3.8-27b` provider. Each profile requires exact native draft typing and
+sampled focus preservation during streaming. Fixed Windows PowerShell scripts
+run through the real terminal, sleep while the driver types, read the fixture,
+and write completion markers. The model must read `src/Main.java` and use
+`apply_diff` to change `throwaway` to `solheim_e2e`.
+
+The driver waits for a non-partial completed-task ask before the next turn,
+clicks the input once to begin that deliberate user action, and verifies that
+native paste entered the exact follow-up prompt before pressing Enter. It fails
+instead of submitting a preserved draft as a prompt. All three expected commands
+must also have been approved; no focus is repaired inside the typing loops.
+
+PASS additionally requires all three terminal completion markers, provider tool
+calls for `execute_command`, `read_file`, `apply_diff`, and `attempt_completion`,
+a changed fixture, and IDE log evidence of a completed diff with
+`preserveFocus=true`. Failures stop the sequence; they are not retried or dropped.
+`live-validation.json` records the extra coverage checks. A live run can fail
+because the model did not perform the required tools, even if focus was healthy;
+check the artifacts before classifying a failure as the product bug.
+
+The runner creates a random relay token and a temporary key file in a directory
+restricted to the current Windows user. It removes the upstream key from the
+child-process environment before launching any processes. The key file is
+removed after the relay becomes healthy, and the IDE receives only the local
+relay token. The relay retains the upstream key in memory and logs metadata,
+not request/response content. Only `SOLHEIM_API_KEY` is a persistent GitHub secret;
+`SOLHEIM_KEY_FILE`, `SOLHEIM_PROXY_LOG`, and `SOLHEIM_RELAY_TOKEN` are generated
+per run. Do not add them as GitHub secrets.
+
+Hosted runs use Windows Server x64. For the original OS, register an interactive
+Windows 11 x64 self-hosted runner with labels `Windows`, `X64`, and
+`windows11-x64`, then select `live_runner=windows11-x64` on manual dispatch.
+The runner checks Windows client build >= 22000 and x64 architecture before
+claiming this configuration. Keep the desktop unlocked and run the agent as a
+foreground process rather than a service. The private profile and fixture do
+not isolate the OS: use a dedicated test machine. The same test is available
+locally:
+
+```powershell
+# Set SOLHEIM_API_KEY in this process without putting its value in shell history.
+./run-windows.ps1 -IdeDir C:/tools/WebStorm-2026.2.1 `
+  -PluginZip C:/build/ZooCode.zip -Provider solheim -RequireWindows11 `
+  -DeadlineSeconds 780 -EvidenceDir C:/temp/live-focus-1
+```
+
+No live-provider run is claimed by these instructions. Keep issue #5 open until
+artifacts show the required tool paths and input preservation on the target
+configuration; a Windows Server run alone does not verify Windows 11.

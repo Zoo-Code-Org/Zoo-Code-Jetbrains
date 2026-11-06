@@ -2,7 +2,20 @@ name: Windows chat focus E2E
 
 on:
   workflow_dispatch:
+    inputs:
+      live_solheim:
+        description: Run real Solheim terminal/diff tests (requires environment approval)
+        type: boolean
+        default: false
+      live_runner:
+        description: Hosted Windows Server or an interactive self-hosted Windows 11 x64 runner
+        type: choice
+        options:
+          - windows-2022
+          - windows11-x64
+        default: windows-2022
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
     paths:
       - ".github/workflows/windows-chat-focus.yml"
       - "jetbrains_plugin/scripts/ui-harness/**"
@@ -131,3 +144,77 @@ jobs:
           name: windows-chat-focus-${{ matrix.ide }}-${{ github.sha }}
           path: focus-evidence/
           if-no-files-found: error
+
+  live-solheim:
+    name: Live Solheim terminal and diff focus (WebStorm 2026.2.1)
+    needs: [build, windows-e2e]
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.live_solheim) ||
+      (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'live-solheim'))
+    environment: solheim
+    runs-on: ${{ inputs.live_runner == 'windows11-x64' && fromJSON('["self-hosted", "Windows", "X64", "windows11-x64"]') || 'windows-2022' }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Validate relay authentication without provider calls
+        run: python -m unittest discover -s jetbrains_plugin/scripts/ui-harness -p test_solheim_proxy.py -v
+      - uses: actions/download-artifact@v4
+        with:
+          name: chat-focus-plugin
+          path: focus-plugin
+      - name: Download WebStorm 2026.2.1 with bundled JBR and JCEF
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force live-evidence | Out-Null
+          $url = 'https://download.jetbrains.com/webstorm/WebStorm-2026.2.1.win.zip'
+          $expected = '08c65a4c2fbc5c8ede2d95de83fddd1665327c970f52c750e6e6414265f834d7'
+          Invoke-WebRequest $url -OutFile "$env:RUNNER_TEMP/webstorm-focus.zip"
+          $actual = (Get-FileHash "$env:RUNNER_TEMP/webstorm-focus.zip" -Algorithm SHA256).Hash
+          if ($actual -ne $expected) { throw 'WebStorm archive checksum mismatch' }
+          "$url SHA256=$actual" | Set-Content live-evidence/ide-download.txt
+          $idePath = Join-Path $env:RUNNER_TEMP ('webstorm-focus-' + [guid]::NewGuid().ToString('N'))
+          Expand-Archive "$env:RUNNER_TEMP/webstorm-focus.zip" $idePath
+          Remove-Item "$env:RUNNER_TEMP/webstorm-focus.zip"
+          $launchers = @(Get-ChildItem $idePath -Filter webstorm64.exe -Recurse)
+          if ($launchers.Count -ne 1) { throw 'Expected exactly one WebStorm launcher' }
+          "FOCUS_IDE_DIR=$($launchers[0].Directory.Parent.FullName)" >> $env:GITHUB_ENV
+      - name: Run three fresh live conversations without retrying failures
+        env:
+          SOLHEIM_API_KEY: ${{ secrets.SOLHEIM_API_KEY }}
+          REQUIRE_WINDOWS11: ${{ inputs.live_runner == 'windows11-x64' }}
+        run: |
+          $plugins = @(Get-ChildItem focus-plugin -Filter *.zip)
+          if ($plugins.Count -ne 1) { throw 'Expected exactly one plugin distribution' }
+          # The runner removes the key from its child-process environment.
+          # Retain it only in this PowerShell process for the next fresh profile.
+          $liveKey = $env:SOLHEIM_API_KEY
+          try {
+            for ($iteration = 1; $iteration -le 3; $iteration++) {
+              $env:SOLHEIM_API_KEY = $liveKey
+              & ./jetbrains_plugin/scripts/ui-harness/run-windows.ps1 `
+                -IdeDir $env:FOCUS_IDE_DIR -PluginZip $plugins[0].FullName `
+                -Provider solheim -DeadlineSeconds 780 -RequireWindows11:($env:REQUIRE_WINDOWS11 -eq 'true') `
+                -EvidenceDir "$env:GITHUB_WORKSPACE/live-evidence/run-$iteration"
+            }
+          } finally { $liveKey = $null; $env:SOLHEIM_API_KEY = $null }
+      - name: Upload live focus evidence and tool coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-solheim-webstorm-2026.2.1-${{ github.sha }}
+          path: live-evidence/
+          if-no-files-found: error
+      - name: Remove downloaded IDE on self-hosted runners
+        if: always() && inputs.live_runner == 'windows11-x64'
+        run: |
+          if ($env:FOCUS_IDE_DIR -and (Test-Path $env:FOCUS_IDE_DIR)) {
+            Remove-Item $env:FOCUS_IDE_DIR -Recurse -Force
+          }
