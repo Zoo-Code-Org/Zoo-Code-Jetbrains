@@ -2,7 +2,9 @@ set -uo pipefail
 SOURCE_DIR="$(cd "$(dirname "$0")" && pwd)"
 : "${IDE_DIR:?Set IDE_DIR to a JCEF-enabled IntelliJ installation}"
 : "${PLUGIN_ZIP:?Set PLUGIN_ZIP to the built ZooCode distribution}"
-: "${SOLHEIM_RELAY_TOKEN:?Set the same random token as the relay}"
+if [ "${HARNESS_FIXTURE:-false}" != true ]; then
+  : "${SOLHEIM_RELAY_TOKEN:?Set the same random token as the relay}"
+fi
 : "${HARNESS_WM_BIN:?Set HARNESS_WM_BIN to openbox or an equivalent wrapper}"
 IDE_DIR="$(realpath "$IDE_DIR")"
 PLUGIN_ZIP="$(realpath "$PLUGIN_ZIP")"
@@ -65,6 +67,7 @@ EOF
   echo "-Didea.trust.all.projects=true"
   echo "-Dide.show.tips.on.startup.default.value=false"
   echo "-Dzoo.harness.mode=${TEST^^}"
+  echo "-Dzoo.harness.fixture=${HARNESS_FIXTURE:-false}"
   echo "-Dzoo.harness.evidence=$EV"
 } > "$H/props/vm-$TEST.vmoptions"
 

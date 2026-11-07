@@ -50,6 +50,13 @@ class Relay(http.server.BaseHTTPRequestHandler):
         if not self.path.startswith('/v1/'):
             self.send_error(404)
             return
+        if self.command == 'GET' and self.path == '/v1/health':
+            # Local readiness only; never probe the paid upstream in a startup loop.
+            self.send_response(200)
+            self.send_header('Content-Length', '5')
+            self.end_headers()
+            self.wfile.write(b'ready')
+            return
         lengths = self.headers.get_all('Content-Length', [])
         length_text = lengths[0] if lengths else '0'
         if (len(lengths) > 1 or self.headers.get('Transfer-Encoding') is not None

@@ -41,7 +41,13 @@ The driver configures `qwen3.8-27b`, submits prompts through the real React
 textarea using Robot/clipboard, and types drafts during two model turns.
 The model runs commands, reads a file, and applies a diff in the throwaway
 workspace. Snapshot replies are correlated by request ID. PASS requires both
-turns completed, exact draft preservation, history growth, and a changed fixture.
+turns completed, exact draft preservation, textarea and browser-window focus at
+every typing sample, streamed partial updates during each typing loop, history
+growth, and a changed fixture. Focus is established once before the first typing
+loop; the driver never refocuses to repair a failing sample. These assertions
+cover [issue #5](https://github.com/Zoo-Code-Org/Zoo-Code-Jetbrains/issues/5).
+A sampled focus check cannot detect a blur and recovery between samples; exact
+draft comparisons also catch dropped keys when sampled focus stays intact.
 No fake input, fake history, or scripted model responses are used.
 
 The profile auto-approves workspace reads and writes. The driver answers a command
@@ -92,3 +98,126 @@ cause, and does not clear the intermittent draft loss described in
 Results vary with window manager, keyboard layout, and timing. Compare control
 and churn modes on the same host in the same session; a single run decides
 nothing.
+
+## Windows GitHub Actions regression test (issue #5)
+
+`.github/workflows/windows-chat-focus.yml` builds the plugin from the tested
+checkout with Zoo Code extension **3.84.0**, then runs the same Java driver on
+`windows-2022` with IntelliJ **2025.3** and **2026.2.1**. It runs for pull requests
+that change the harness or relevant implementation, and supports manual dispatch
+once the workflow exists on the default branch. It does not publish a plugin.
+The IDE archives include JBR/JCEF; their SHA-256 is checked against JetBrains'
+published checksum, pinned in the workflow matrix. The run identity records the IDE build, plugin digest, OS,
+runner image, and tested commit.
+
+The scenario uses the real bundled extension, React input and history, JCEF,
+and native `java.awt.Robot` key events. Only the OpenAI-compatible provider is
+simulated by `streaming_fixture.py`, bound to loopback. No API credentials are
+needed. Each response emits 100 text deltas over about 25 seconds followed by a
+native `attempt_completion` tool call. Two turns must complete, streaming events
+and history must grow, and every draft character and sampled focus check must
+survive. The driver never repairs focus during the typing loops.
+
+Before chat testing, a standalone Swing window must receive exact native typing;
+the real React textarea must then receive a separate native typing smoke test.
+A missing interactive desktop or failed smoke test fails the job. It is not
+reported as a pass or a skipped focus regression. Startup browser selection waits
+for a loaded, mounted instance after indexing, since startup can retire an earlier
+webview.
+
+The `windows-chat-focus-<IDE>-<commit>` artifact contains desktop and chat
+screenshots, `run-identity.json`, `evidence.json`, `progress.log`, IDE logs,
+provider stream metadata, and `runner-error.txt` on runner failures. A missing
+status, IDE crash, timeout, dropped key, or failed focus assertion fails the job.
+Sampled focus checks can miss brief transitions between samples; exact text
+comparisons still catch dropped keys. The fixture covers streaming history
+updates, not terminal creation, diff opening, or nondeterministic model behavior;
+use the live Solheim battery for those paths.
+
+For a local Windows desktop session, start PowerShell (not a Windows service):
+
+```powershell
+./run-windows.ps1 -IdeDir C:/tools/idea -PluginZip C:/build/ZooCode.zip `
+  -EvidenceDir C:/temp/focus-evidence-1
+```
+
+Prerequisites are Python 3, a built **release** plugin zip, and an IntelliJ Windows
+ZIP distribution with its bundled JBR. Each run needs a fresh evidence directory.
+The runner starts/stops its own fixture and IDE and removes the disposable profile.
+Keep the desktop unlocked and avoid interacting with it while tests run. Hosted
+`windows-2022` is Windows Server x64, not the reporter's Windows 11/WebStorm setup;
+a pass is evidence for the tested configuration only. The same runner can be used
+on a self-hosted Windows 11 desktop with IntelliJ.
+
+Fixture HTTP integration tests:
+
+```sh
+python3 -m unittest -v test_streaming_fixture.py
+```
+
+The fixture can also exercise the conversation on Linux using `run-solheim.sh`
+with `HARNESS_FIXTURE=true` (the relay token is then unnecessary). Start
+`python3 streaming_fixture.py --log /tmp/focus-provider.jsonl` first, then use
+the IDE/plugin/window-manager variables from the manual setup above. Set the
+fixture flag through this environment variable, not `JAVA_TOOL_OPTIONS`, which
+can display an IDE warning balloon covering the input.
+
+## Maintainer-approved live Solheim testing on Windows
+
+The `live-solheim` job in the Windows focus workflow uses the protected GitHub
+Environment **solheim** with the Environment secret **SOLHEIM_API_KEY**. Required
+reviewers must approve the exact tested commit before it receives the key. It
+runs only when a PR has the **live-solheim** label, or a manual dispatch selects
+`live_solheim`. Manual dispatch is available after this workflow is on the
+default branch; the label enables testing this PR before merging.
+
+The job first requires the credential-free matrix to pass. It downloads pinned
+WebStorm **2026.2.1**, then runs three fresh two-turn conversations with the real
+Solheim `qwen3.8-27b` provider. Each profile requires exact native draft typing and
+sampled focus preservation during streaming. Fixed Windows PowerShell scripts
+run through the real terminal, sleep while the driver types, read the fixture,
+and write completion markers. The model must read `src/Main.java` and use
+`apply_diff` to change `throwaway` to `solheim_e2e`.
+
+The driver waits for a non-partial completed-task ask before the next turn,
+clicks the input once to begin that deliberate user action, and verifies that
+native paste entered the exact follow-up prompt before pressing Enter. It fails
+instead of submitting a preserved draft as a prompt. All three expected commands
+must also have been approved; no focus is repaired inside the typing loops.
+
+PASS additionally requires all three terminal completion markers, provider tool
+calls for `execute_command`, `read_file`, `apply_diff`, and `attempt_completion`,
+a changed fixture, and IDE log evidence of a completed diff with
+`preserveFocus=true`. Failures stop the sequence; they are not retried or dropped.
+`live-validation.json` records the extra coverage checks. A live run can fail
+because the model did not perform the required tools, even if focus was healthy;
+check the artifacts before classifying a failure as the product bug.
+
+The runner creates a random relay token and a temporary key file in a directory
+restricted to the current Windows user. It removes the upstream key from the
+child-process environment before launching any processes. The key file is
+removed after the relay becomes healthy, and the IDE receives only the local
+relay token. The relay retains the upstream key in memory and logs metadata,
+not request/response content. Only `SOLHEIM_API_KEY` is a persistent GitHub secret;
+`SOLHEIM_KEY_FILE`, `SOLHEIM_PROXY_LOG`, and `SOLHEIM_RELAY_TOKEN` are generated
+per run. Do not add them as GitHub secrets.
+
+Hosted runs use Windows Server x64. For the original OS, register an interactive
+Windows 11 x64 self-hosted runner with labels `Windows`, `X64`, and
+`windows11-x64`, then select `live_runner=windows11-x64` on manual dispatch.
+The runner checks Windows client build >= 22000 and x64 architecture before
+claiming this configuration. Keep the desktop unlocked and run the agent as a
+foreground process rather than a service. The private profile and fixture do
+not isolate the OS: use a dedicated test machine. The same test is available
+locally:
+
+```powershell
+# Set SOLHEIM_API_KEY in this process without putting its value in shell history.
+./run-windows.ps1 -IdeDir C:/tools/WebStorm-2026.2.1 `
+  -PluginZip C:/build/ZooCode.zip -Provider solheim -RequireWindows11 `
+  -DeadlineSeconds 780 -EvidenceDir C:/temp/live-focus-1
+```
+
+No live-provider run is claimed by these instructions. Keep issue #5 open until
+artifacts show the required tool paths and input preservation on the target
+configuration; a Windows Server run alone does not verify Windows 11.

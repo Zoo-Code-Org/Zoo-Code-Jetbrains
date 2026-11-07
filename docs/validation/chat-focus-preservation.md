@@ -228,3 +228,124 @@ instrumented pass), `p-tuple-fix-one-key-loss/`, `p-dom-key-loss/`,
 `terminal-reduced-heap-oom/`, `t/`, `g/`, `f/`, `g-native-stale-browser/`,
 unit XML in `review-fixes-unit-results/` and
 `terminal-creation-unit-results/`, and earlier reports `FOCUS_FIX_REPORT*.md`.
+
+## Issue #5 assertion update (2026-11-06)
+
+The checked-in provider-backed harness now additionally requires textarea focus
+and `document.hasFocus()` at every typing sample, plus an increase in streamed
+partial-message events during each turn's typing loop. Exact draft comparisons
+remain required even when focus checks pass. This prevents a preserved draft or
+a non-streaming conversation from passing as sufficient focus evidence.
+
+Validation of this update: `HarnessDriver.java` compiles against the local
+IU-253.28294.334 installation, and `bash -n scripts/ui-harness/run-solheim.sh`
+and `git diff --check` pass. The updated live-provider battery was **not run**;
+these checks do not supersede the latest recorded FAIL or validate the reported
+Windows 11 / WebStorm 2026.2.1 environment. The live-provider mode still requires a
+provider relay token and a window manager as described in the harness README.
+
+## Windows CI setup (2026-11-06)
+
+[Windows chat focus E2E](../../.github/workflows/windows-chat-focus.yml) now builds
+the current checkout with extension 3.84.0 and runs a credential-free provider
+fixture on `windows-2022`, with pinned IDEA 2025.3 and 2026.2.1 Windows archives
+and SHA-256 digests. This tests Windows Server x64; it does not establish behavior
+on Windows 11 or WebStorm. No Windows workflow execution is claimed here.
+
+The PowerShell runner requires an interactive desktop, then checks native typing
+in a standalone Swing window and in the actual React textarea before submitting
+two turns. The local provider emits timed SSE deltas and native completion tool
+calls; it requests no terminal commands or edits. Exact draft preservation,
+sampled textarea/window focus, streamed updates during both typing loops, history
+growth, and completion of both turns are required. Missing snapshots, crashes,
+and timeouts fail. Artifacts include screenshots, focus/key traces, IDE logs,
+provider metadata, the tested commit, IDE build, and plugin archive digest.
+
+The existing observer was updated for the bundled extension's `messageUpdated`
+notifications (with `clineMessage`), retaining the legacy `partialMessage` path.
+It now copies the state message array before observing updates. Browser startup
+selection waits for a loaded, mounted instance after indexing, and failures save
+a screenshot. The live-provider mode remains separate from the fixture mode.
+
+Checks completed locally: four fixture HTTP integration tests pass; the driver
+and desktop probe compile against IU-253.28294.334; the standalone native desktop
+probe passes under Xvfb/Openbox; PowerShell's parser accepts the runner and the
+workflow's Windows scripts; actionlint, shell syntax, and whitespace checks pass.
+Full Windows execution remains pending CI. See the harness README for setup and
+artifact interpretation. These checks do not clear the open product issue.
+
+Local fixture E2E: **PASS**, 87 seconds, on Linux Xvfb/Openbox with
+IU-253.28294.334 and the existing plugin distribution SHA-256
+`4d9b34ca46c4bbe0aba7637181e697da4f1bcbb96590d87efdf99c72ab3865e4`
+(extension 3.84.0). Both turns completed, history grew, partial updates were
+observed in both typing loops, exact drafts survived, and sampled textarea/window
+focus stayed intact. Evidence is local at
+`/tmp/zoo-solheim-e2e.jZElagBw/evidence/p/`; provider metadata is at
+`/tmp/zoo-issue5-provider-4.jsonl`. These are temporary local artifacts, not
+checked-in evidence. The Windows job instead builds and tests the current
+checkout; this local run does not validate its packaged product code on Windows.
+
+Earlier local attempts are retained as failures: one warning balloon blocked
+native input; one startup attempt had no DOM snapshot; one reached the second
+turn but lost DOM snapshot delivery. That intermediate run also used the old
+stream observer. The passing run is evidence that the corrected scenario works,
+not a claim that startup/snapshot failures or the original product issue are
+resolved. Windows CI must pass without retrying or discarding failed samples.
+
+## Protected live Windows validation prepared (2026-11-06)
+
+The workflow now includes an opt-in `live-solheim` job behind Environment
+`solheim` approval. It tests WebStorm 2026.2.1 with the real Solheim provider,
+three fresh two-turn runs, terminal completion markers, required provider tool
+names, the actual edited fixture, and preserving-diff log evidence in addition
+to exact typing and sampled focus checks. The upstream key is supplied only to
+the loopback relay and is removed from the IDE's process environment.
+
+This is prepared test infrastructure, **not a live-provider PASS**. Hosted
+Windows Server remains distinct from the reported Windows 11 environment.
+Manual dispatch can select an interactive self-hosted Windows 11 x64 runner;
+the runner then validates the OS/architecture. Evidence must be reviewed before
+closing #5. See the harness README for the environment secret and launch steps.
+
+## Local live Solheim verification (2026-11-06)
+
+**Accepted live PASS**, 93 seconds, on Linux Xvfb/Openbox with
+IU-253.28294.334 (JBR 21.0.8). Endpoint `https://api.solheim.ai/v1`, model
+`qwen3.8-27b`, real native tool calls through the loopback relay. The plugin is
+the artifact built by the passing PR CI run
+[42154063861](https://github.com/Zoo-Code-Org/Zoo-Code-Jetbrains/actions/runs/42154063861),
+ZIP SHA-256
+`edc9bd9634e852a4dbc24e80a8f2baa91320b49f05894c6b457e5c0be7affdb3`,
+with the current local harness driver. The smaller connectivity probe separately
+returned HTTP 200, streaming events, and an `attempt_completion` tool call.
+
+Accepted run evidence: `/tmp/zoo-solheim-e2e.0Ox96IMb/evidence/p/`. All 18
+first-turn and five follow-up draft samples matched exactly, with textarea and
+browser-window focus preserved. Both turns completed with partial updates during
+the typing loops. IDE logs confirm all three requested terminal commands exited
+0, the actual file changed to `solheim_e2e`, and the diff opened with
+`preserveFocus=true` and completed. Observed provider responses returned HTTP
+200 and included `execute_command`, `read_file`, `apply_diff`, and
+`attempt_completion`. The temporary upstream key file was deleted after relay
+startup; the relay was stopped after the run. No upstream credential is recorded
+here or in test artifacts.
+
+An earlier local run at `/tmp/zoo-solheim-e2e.ikw85vsS/evidence/p/` reported
+PASS after 138 seconds but is **rejected as insufficient coverage**: the intended
+follow-up prompt was not pasted, the preserved first-turn draft was submitted,
+and the third command never ran. Its raw PASS is retained, not rewritten. This
+exposed a harness defect: accepting a completed `say` message before the final
+completed-task ask and submitting the next turn without checking native paste.
+The driver now waits for the completed-task ask, uses normal native key delays,
+verifies exact follow-up input before Enter, and requires approval of all three
+expected commands. The accepted run above exercises those corrected checks.
+
+These are temporary local evidence paths. This verifies the live-provider
+scenario on Linux, not the new Windows PowerShell runner, WebStorm, or Windows
+11. The protected Windows job still needs to run before #5 can be evaluated for
+closure on its reported environment.
+
+The corrected driver also passed the credential-free local fixture E2E in
+88 seconds using the same downloaded plugin artifact. Both turns streamed,
+the exact follow-up prompt was verified, and draft/focus checks passed. Evidence:
+`/tmp/zoo-solheim-e2e.TxEsZADF/evidence/p/`.
