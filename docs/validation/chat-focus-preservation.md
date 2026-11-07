@@ -1,29 +1,31 @@
 # Chat focus validation
 
 Updated 2026-11-07. [Issue #5](https://github.com/Zoo-Code-Org/Zoo-Code-Jetbrains/issues/5)
-remains open pending Windows validation of the diff-loading fix.
+remains open pending Windows validation of the file and diff loading fix.
 
 ## Current finding and fix
 
-A live WebStorm 2026.2.1 run previously lost one draft character near diff
-opening (19/20 first-turn characters; 4/4 follow-up). Sampled chat focus stayed
-intact, and the trace contained a key release without the corresponding press.
-A local regression also reproduced character loss with chat still focused.
-A later old-JAR control passed, so reproduction remains intermittent; a single
-green run is not sufficient evidence to close the issue.
+The [Windows live run](https://github.com/Zoo-Code-Org/Zoo-Code-Jetbrains/actions/runs/42384965962/job/128442585155)
+with the diff-only fix lost one first-turn character: 28/29 survived, followed by
+7/7 in the second turn. Both turns completed, all three commands exited 0, the
+file edit succeeded, and sampled chat focus stayed intact.
 
-The synchronous file-editor API waits for loading in a nested event loop that
-can consume input before normal keyboard dispatch. Preserving diff opens now
-use the suspending API with focus disabled, leaving normal UI dispatch running.
-Options use the stable JVM no-argument constructor for IDE binary compatibility.
+The missing key falls inside `showTextDocument(..., preserveFocus=true)`, before
+the diff call begins. Normal file opens still used the synchronous editor API,
+whose loading loop can consume input before normal keyboard dispatch. Preserving
+file and diff opens now share the suspending API with focus disabled. Options
+use the stable JVM no-argument constructor for IDE binary compatibility.
 
-The rebuilt JetBrains JAR passed the WebStorm regression with the CI extension
-and runtime held constant: 12 actual diff tabs opened, both streamed turns
-completed, and all 21 first-turn and 11 follow-up draft characters survived.
-Live Solheim also passed: 17/17 first-turn and 8/8 follow-up characters,
-three terminal commands exiting 0, the requested file edit and preserving diff,
-and successful native tool responses from `https://api.solheim.ai/v1` using
-`qwen3.8-27b`. All seven provider responses returned HTTP 200.
+The regression now exercises 12 normal Java file opens, each followed by a diff,
+through the production APIs while typing. Every file and diff tab must open.
+The broader fix passed locally on WebStorm 2026.2.1 with the CI extension/runtime
+held constant: all 12 files and 12 diffs opened, both streamed turns completed,
+and all 23 first-turn and 11 follow-up characters survived. Live Solheim also
+passed with 21/21 and 5/5 characters, all three commands exiting 0, the file edit
+and preserving diff complete, and all nine provider responses HTTP 200
+(`https://api.solheim.ai/v1`, `qwen3.8-27b`). The earlier diff-only runs did not
+establish that the normal-file path was safe. Reproduction is intermittent, so a single green run
+is insufficient evidence to close the issue.
 
 ## Existing fixes
 
@@ -41,10 +43,10 @@ Recorded runs use the bundled Zoo Code extension 3.84.0.
 
 | Environment | Scenario | Result |
 | --- | --- | --- |
-| Windows Server x64, IntelliJ 2025.3 and 2026.2.1 | Local streaming-provider fixture | Passed in [CI](https://github.com/Zoo-Code-Org/Zoo-Code-Jetbrains/actions/runs/42154063861) |
+| Windows Server x64, IntelliJ 2025.3 and 2026.2.1 | Previous streaming/diff fixture | Passed in [CI](https://github.com/Zoo-Code-Org/Zoo-Code-Jetbrains/actions/runs/42384965962) |
 | Linux, IntelliJ 2025.3 | Live Solheim commands and diff | Passed; does not clear intermittent failures |
-| Linux, WebStorm 2026.2.1 | Streaming fixture plus 12 preserving diff opens | Passed with rebuilt JAR |
-| Linux, WebStorm 2026.2.1 | Live Solheim commands and diff | Failed before the fix; passed with rebuilt JAR |
+| Linux, WebStorm 2026.2.1 | Streaming plus 12 file/diff sequences | Passed with broader fix |
+| Linux, WebStorm 2026.2.1 | Live Solheim commands and diff | Passed with broader fix |
 
 The harness uses native keyboard events in the real React/JCEF input. It requires
 exact drafts, sampled input/window focus, streamed history updates, and completed
@@ -53,8 +55,8 @@ require terminal completion markers, required provider tool calls, the edited
 fixture, and preserving-diff log evidence. Setup failures, timeouts, and missing
 coverage fail the test; failed typing samples are never repaired or discarded.
 
-Windows fixture jobs now also exercise preserving diffs through the production
-command and verify each tab opened. Files are prepared before typing to separate
+Windows fixture jobs now exercise preserving files followed by diffs through
+the production APIs and verify each tab opened. Files are prepared before typing to separate
 filesystem discovery from editor loading. Live Solheim adds terminal and real
 model/tool activity; fixture results do not validate those paths.
 
@@ -72,7 +74,7 @@ build, OS, and plugin digest, and verify that required tools actually ran before
 accepting a pass. Startup dialogs and covered input targets are setup failures,
 not evidence of a streaming focus regression.
 
-Windows/WebStorm live validation is still pending. Hosted Windows Server results
+Windows validation of the broader file-and-diff fix is pending. Hosted Windows Server results
 do not establish behavior on the reporter's Windows 11 installation; use an
 interactive Windows 11 x64 runner or a manual reproduction for that configuration.
 Keep #5 open until the input loss is resolved and the required paths are validated.

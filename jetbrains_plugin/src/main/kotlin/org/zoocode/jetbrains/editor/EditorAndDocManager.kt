@@ -210,6 +210,17 @@ class EditorAndDocManager(val project: Project) : Disposable {
     }
 
 
+    private suspend fun openFilePreservingFocus(file: VirtualFile): Array<FileEditor> {
+        // Synchronous editor loading pumps a restricted event loop that can
+        // discard chat keys, even when no focus transfer is requested.
+        // Invoke the JVM no-arg constructor: Kotlin's default-argument constructor
+        // changes signature between supported IDE builds.
+        val openOptions = FileEditorOpenOptions::class.java.getConstructor()
+            .newInstance().withRequestFocus(false)
+        return FileEditorManagerEx.getInstanceEx(project)
+            .openFile(file, openOptions).allEditors.toTypedArray()
+    }
+
     /**
      * Opens a file editor for the document.
      *
@@ -225,14 +236,20 @@ class EditorAndDocManager(val project: Project) : Disposable {
     suspend fun openEditor(documentUri: URI, preserveFocus: Boolean = false, options: ResolvedTextEditorConfiguration = ResolvedTextEditorConfiguration()): EditorHolder {
         val fileEditorManager = FileEditorManager.getInstance(project)
         val path = documentUri.path
-        var ideaEditor : Array<FileEditor?>? = null
+        var ideaEditor : Array<out FileEditor?>? = null
 
         val vfs = LocalFileSystem.getInstance()
         val file = vfs.findFileByPath(path)
         file?.let {
-            ApplicationManager.getApplication().invokeAndWait {
-                if (!project.isDisposed) {
-                    ideaEditor = fileEditorManager.openFile(it, editorFocusRequest(preserveFocus))
+            if (!project.isDisposed) {
+                if (preserveFocus) {
+                    ideaEditor = openFilePreservingFocus(it)
+                } else {
+                    ApplicationManager.getApplication().invokeAndWait {
+                        if (!project.isDisposed) {
+                            ideaEditor = fileEditorManager.openFile(it, editorFocusRequest(preserveFocus))
+                        }
+                    }
                 }
             }
         }
@@ -279,16 +296,7 @@ class EditorAndDocManager(val project: Project) : Disposable {
                 val diffFile = ChainDiffVirtualFile(requestChain, DiffBundle.message("label.default.diff.editor.tab.name", *arrayOfNulls<Any>(0)))
                 when (diffOpenPlan(preserveFocus)) {
                     DiffOpenPlan.PRESERVE_VIA_FILE_EDITOR -> {
-                        // The synchronous overload pumps a restricted event loop
-                        // while loading the editor and can discard chat key presses.
-                        // Suspend until loading finishes, leaving normal UI dispatch running.
-                        // Use the JVM no-arg constructor: Kotlin's default-argument
-                        // constructor changes signature between supported IDE builds.
-                        val openOptions = FileEditorOpenOptions::class.java.getConstructor()
-                            .newInstance().withRequestFocus(false)
-                        ideaEditor = FileEditorManagerEx.getInstanceEx(project)
-                            .openFile(diffFile, openOptions)
-                            .allEditors.toTypedArray()
+                        ideaEditor = openFilePreservingFocus(diffFile)
                     }
                     DiffOpenPlan.DELIBERATE_VIA_DIFF_HELPER -> {
                         ApplicationManager.getApplication().invokeAndWait {

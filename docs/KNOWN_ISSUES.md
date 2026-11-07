@@ -206,11 +206,11 @@ automatically activate chat.
 
 ### 3.3 Intermittent First-Turn Draft Character Loss
 
-Pending Windows verification. Preserving diff opens now use the suspending
-file-editor API to avoid a synchronous loading loop that can discard key presses.
-The local regression reproduced character loss with the old JAR and passed with
-the rebuilt JAR while opening 12 diff tabs in WebStorm 2026.2.1. Local live
-Solheim also passed; Windows fixture and live coverage remain required. See
+Open. The Windows live run lost one character during a preserving normal-file
+open before the diff began. Preserving file and diff opens now share the
+suspending file-editor API to avoid the synchronous loading loop. The expanded
+regression opens 12 Java files followed by diffs while typing. The expanded
+local regression and live Solheim passed; Windows verification remains required. See
 [the validation report](validation/chat-focus-preservation.md).
 
 ## 4. General Troubleshooting Steps

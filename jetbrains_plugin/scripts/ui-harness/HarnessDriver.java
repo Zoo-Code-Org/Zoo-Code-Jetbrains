@@ -105,8 +105,8 @@ public final class HarnessDriver implements AppLifecycleListener {
                 Path dir = Paths.get(project.getBasePath(), ".focus-diffs");
                 Files.createDirectories(dir);
                 for (int i=0; i<12; i++) {
-                    Files.writeString(dir.resolve("before-" + i + ".txt"), "before\n");
-                    Files.writeString(dir.resolve("after-" + i + ".txt"), "after\n");
+                    Files.writeString(dir.resolve("before-" + i + ".java"), "class Before" + i + " {}\n");
+                    Files.writeString(dir.resolve("after-" + i + ".java"), "class After" + i + " {}\n");
                 }
                 com.intellij.openapi.vfs.VirtualFile files = com.intellij.openapi.vfs.LocalFileSystem.getInstance()
                     .refreshAndFindFileByIoFile(dir.toFile());
@@ -408,13 +408,13 @@ public final class HarnessDriver implements AppLifecycleListener {
         java.util.concurrent.Future<?> diffOpens = diffStress ? AppExecutorUtil.getAppExecutorService().submit(() -> {
             try {
                 for (int i=0; i<12; i++) {
-                    openPreservingDiff(project, i);
+                    openPreservingEditors(project, i);
                     Thread.sleep(350);
                 }
             } catch (Throwable e) {
                 StringWriter stack = new StringWriter();
                 e.printStackTrace(new PrintWriter(stack));
-                log("preserving diff failed: " + stack);
+                log("preserving editor sequence failed: " + stack);
                 throw new RuntimeException(e);
             }
         }) : null;
@@ -439,6 +439,7 @@ public final class HarnessDriver implements AppLifecycleListener {
         record("P_realTaskCompleted",completed);
         if (diffOpens != null) {
             diffOpens.get(60, TimeUnit.SECONDS);
+            record("P_preservingFilesCompleted",12);
             record("P_preservingDiffsCompleted",12);
         }
         boolean historyGrew = snap.get("messages").getAsInt()>initialMessages;
@@ -541,34 +542,32 @@ public final class HarnessDriver implements AppLifecycleListener {
         log("typed text of length " + text.length());
     }
 
-    // Exercise the production command against fresh files while native keys go
+    // Exercise showTextDocument followed by diff, as used by live apply_diff.
+    // Both production calls run against fresh files while native keys go
     // to the real chat. Reflection keeps Kotlin/IDE classes in their own loaders.
-    private void openPreservingDiff(Project project, int index) throws Exception {
+    private void openPreservingEditors(Project project, int index) throws Exception {
         Path dir = Paths.get(project.getBasePath(), ".focus-diffs");
-        Path left = dir.resolve("before-" + index + ".txt");
-        Path right = dir.resolve("after-" + index + ".txt");
+        Path left = dir.resolve("before-" + index + ".java");
+        Path right = dir.resolve("after-" + index + ".java");
         Class<?> commandClass = zooClass("org.zoocode.jetbrains.editor.OpenEditorAPICommands");
         Object command = commandClass.getConstructor(Project.class).newInstance(project);
         Method method = java.util.Arrays.stream(commandClass.getMethods())
             .filter(m -> m.getName().equals("workbench_diff")).findFirst().orElseThrow();
-        Class<?> continuationClass = method.getParameterTypes()[4];
-        ClassLoader loader = continuationClass.getClassLoader();
-        Object context = Class.forName("kotlin.coroutines.EmptyCoroutineContext", true, loader).getField("INSTANCE").get(null);
-        java.util.concurrent.CompletableFuture<Object> done = new java.util.concurrent.CompletableFuture<>();
-        Object continuation = Proxy.newProxyInstance(loader, new Class<?>[]{continuationClass}, (proxy, m, args) -> {
-            if (m.getName().equals("getContext")) return context;
-            if (m.getName().equals("resumeWith")) { done.complete(args[0]); return null; }
-            if (m.getName().equals("toString")) return "FocusDiffContinuation";
-            if (m.getName().equals("hashCode")) return System.identityHashCode(proxy);
-            if (m.getName().equals("equals")) return proxy == args[0];
-            return null;
-        });
         java.util.Map<String,Object> leftUri = java.util.Map.of("scheme","file","path",left.toString().replace('\\','/'));
         java.util.Map<String,Object> rightUri = java.util.Map.of("scheme","file","path",right.toString().replace('\\','/'));
-        Object result = method.invoke(command, leftUri, rightUri, "Input preservation " + index,
-            java.util.Map.of("preserveFocus",true), continuation);
-        if (result != null && result.toString().equals("COROUTINE_SUSPENDED")) result = done.get(60, TimeUnit.SECONDS);
-        Class.forName("kotlin.ResultKt", true, loader).getMethod("throwOnFailure", Object.class).invoke(null, result);
+        Class<?> textEditorsClass = zooClass("org.zoocode.jetbrains.actors.MainThreadTextEditors");
+        Object textEditors = textEditorsClass.getConstructor(Project.class).newInstance(project);
+        Method show = java.util.Arrays.stream(textEditorsClass.getMethods())
+            .filter(m -> m.getName().equals("tryShowTextDocument")).findFirst().orElseThrow();
+        invokeSuspend(textEditors, show, rightUri, java.util.Map.of("preserveFocus",true));
+        runOnEdt(() -> {
+            boolean opened = java.util.Arrays.stream(com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).getOpenFiles())
+                .anyMatch(file -> file.isInLocalFileSystem() && file.toNioPath().equals(right));
+            if (!opened) throw new IllegalStateException("Production call did not open file " + index);
+        });
+        log("preserving file completed: " + index);
+        invokeSuspend(command, method, leftUri, rightUri, "Input preservation " + index,
+            java.util.Map.of("preserveFocus",true));
         runOnEdt(() -> {
             boolean opened = false;
             for (com.intellij.openapi.vfs.VirtualFile file : com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).getOpenFiles()) {
@@ -582,6 +581,27 @@ public final class HarnessDriver implements AppLifecycleListener {
             if (!opened) throw new IllegalStateException("Production command did not open diff " + index);
         });
         log("preserving diff completed: " + index);
+    }
+
+    private Object invokeSuspend(Object target, Method method, Object... arguments) throws Exception {
+        Class<?> continuationClass = method.getParameterTypes()[arguments.length];
+        ClassLoader loader = continuationClass.getClassLoader();
+        Object context = Class.forName("kotlin.coroutines.EmptyCoroutineContext", true, loader).getField("INSTANCE").get(null);
+        java.util.concurrent.CompletableFuture<Object> done = new java.util.concurrent.CompletableFuture<>();
+        Object continuation = Proxy.newProxyInstance(loader, new Class<?>[]{continuationClass}, (proxy, m, args) -> {
+            if (m.getName().equals("getContext")) return context;
+            if (m.getName().equals("resumeWith")) { done.complete(args[0]); return null; }
+            if (m.getName().equals("toString")) return "FocusEditorContinuation";
+            if (m.getName().equals("hashCode")) return System.identityHashCode(proxy);
+            if (m.getName().equals("equals")) return proxy == args[0];
+            return null;
+        });
+        Object[] parameters = java.util.Arrays.copyOf(arguments, arguments.length + 1);
+        parameters[arguments.length] = continuation;
+        Object result = method.invoke(target, parameters);
+        if (result != null && result.toString().equals("COROUTINE_SUSPENDED")) result = done.get(60, TimeUnit.SECONDS);
+        Class.forName("kotlin.ResultKt", true, loader).getMethod("throwOnFailure", Object.class).invoke(null, result);
+        return result;
     }
 
     private String swingFocusOwnerClass() {

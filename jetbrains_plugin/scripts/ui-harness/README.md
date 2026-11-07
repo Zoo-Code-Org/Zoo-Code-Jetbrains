@@ -116,8 +116,8 @@ simulated by `streaming_fixture.py`, bound to loopback. No API credentials are
 needed. Each response emits 100 text deltas over about 25 seconds followed by a
 native `attempt_completion` tool call. Two turns must complete, streaming events
 and history must grow, and every draft character and sampled focus check must
-survive. Windows fixture runs also open 12 fresh diffs through the production
-command while typing; each diff tab must actually open. Test files are prepared
+survive. Windows fixture runs also open 12 fresh Java files, each followed by a diff,
+through the production APIs while typing; every file and diff tab must open. Test files are prepared
 before typing so filesystem discovery is separate from editor-loading coverage.
 The driver never repairs focus during the typing loops.
 
@@ -135,7 +135,7 @@ status, IDE crash, timeout, dropped key, or failed focus assertion fails the job
 Sampled focus checks can miss brief transitions between samples; exact text
 comparisons still catch dropped keys. Correlated snapshots use JCEF console
 and title callbacks; repeating an unanswered observation does not type or focus.
-The fixture covers streaming and preserving diff opens. Use the live Solheim
+The fixture covers streaming and preserving file and diff opens. Use the live Solheim
 battery for terminal creation and real model/tool behavior.
 
 For a local Windows desktop session, start PowerShell (not a Windows service):
@@ -245,7 +245,7 @@ HARNESS_FIXTURE=true bash run-solheim.sh
 ```
 
 Start `streaming_fixture.py` first for the command above. Add
-`HARNESS_DIFF_STRESS=true` to exercise the same 12-diff regression as Windows CI.
+`HARNESS_DIFF_STRESS=true` to exercise the same 12-file/12-diff regression as Windows CI.
 For live testing, use the private relay setup and omit `HARNESS_FIXTURE=true`.
 
 Startup now waits for modal/licensing windows to close. The generic startup

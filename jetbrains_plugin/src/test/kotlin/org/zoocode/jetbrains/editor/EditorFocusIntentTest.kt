@@ -11,8 +11,8 @@ import org.junit.Test
 
 /**
  * Covers the display-intent decoding shared by tryShowTextDocument and
- * workbench_diff, the inverse mapping that both [EditorAndDocManager] open
- * calls pass to FileEditorManager.openFile, and the diff routing decision.
+ * workbench_diff, the inverse platform focus mapping, and the diff routing
+ * decision. Preserving file and diff opens share the suspending platform API.
  * The real open behavior is exercised live by the UI harness, which needs a
  * real IDE.
  */
