@@ -171,9 +171,8 @@ The plugin requires Node.js command line tools to function properly. Node.js exe
 ## 3. Focus Behavior
 
 Measured triggers, fixes, and remaining limits are recorded in
-[the validation report](validation/chat-focus-preservation.md). Raw evidence
-paths in that report are local, ignored build artifacts; the report includes
-the relevant trace excerpts for readers of a clean checkout.
+[the validation report](validation/chat-focus-preservation.md), with test setup
+and evidence-review instructions in the linked harness README.
 
 ### 3.1 Terminal Creation Focus Restoration
 
@@ -207,21 +206,12 @@ automatically activate chat.
 
 ### 3.3 Intermittent First-Turn Draft Character Loss
 
-Open. Not fixed. Not conclusively attributed. Real provider-backed
-conversations intermittently lose one draft character near the first
-file-editor or diff opening. The latest run completed both turns but failed
-draft preservation: 32/33 characters in the first turn, 6/6 in the follow-up.
-The IDE trace recorded the key release without a matching press, with no
-browser remount and the Swing owner stable on the chat OSR canvas. The
-initiating platform call remains unproven. The same test stream found and fixed
-the separate diff `preserveFocus` decoding bug; the live diff now opens with
-`preserveFocus=true` and chat focus retained. A pure JDK probe
-(`scripts/ui-harness/KeyDropProbe.java`) reproduced release-without-press only
-under deliberate focus churn (4/120; control 0/120); it is analogous evidence,
-not an IDE reproduction. A later passing run does not clear this issue.
-Observed only in the Linux Xvfb/Openbox fixture on IU-253.28294.334. Other
-platforms, builds, and live click races are untested. Trace excerpts and
-failed-run references are in [the validation report](validation/chat-focus-preservation.md).
+Pending Windows verification. Preserving diff opens now use the suspending
+file-editor API to avoid a synchronous loading loop that can discard key presses.
+The local regression reproduced character loss with the old JAR and passed with
+the rebuilt JAR while opening 12 diff tabs in WebStorm 2026.2.1. Local live
+Solheim also passed; Windows fixture and live coverage remain required. See
+[the validation report](validation/chat-focus-preservation.md).
 
 ## 4. General Troubleshooting Steps
 

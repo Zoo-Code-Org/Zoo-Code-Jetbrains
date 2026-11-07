@@ -128,6 +128,7 @@ idea.plugins.path=$profilePath/plugins
 -Dide.show.tips.on.startup.default.value=false
 -Dzoo.harness.mode=P
 -Dzoo.harness.fixture=$((-not $live).ToString().ToLowerInvariant())
+-Dzoo.harness.diffStress=$((-not $live).ToString().ToLowerInvariant())
 -Dzoo.harness.evidence=$evidencePath
 "@ | Set-Content $options
     $env:IDEA_PROPERTIES = $properties

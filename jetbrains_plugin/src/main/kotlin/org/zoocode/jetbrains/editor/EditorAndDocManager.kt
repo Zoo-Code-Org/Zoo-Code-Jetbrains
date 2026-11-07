@@ -24,6 +24,8 @@ import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileEditor.FileEditor
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.FileEditorManagerListener
+import com.intellij.openapi.fileEditor.ex.FileEditorManagerEx
+import com.intellij.openapi.fileEditor.impl.FileEditorOpenOptions
 import com.intellij.openapi.fileTypes.FileType
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.LocalFileSystem
@@ -272,16 +274,25 @@ class EditorAndDocManager(val project: Project) : Disposable {
         if (content1 != null && content2 != null){
             val request = SimpleDiffRequest(title, content1, content2, left.path, documentUri.path)
             var ideaEditor : Array<out FileEditor?>? = null
-            ApplicationManager.getApplication().invokeAndWait{
-                if (!project.isDisposed) {
-                    val requestChain: DiffRequestChain = SimpleDiffRequestChain(request)
-                    val diffFile = ChainDiffVirtualFile(requestChain, DiffBundle.message("label.default.diff.editor.tab.name", *arrayOfNulls<Any>(0)))
-                    when (diffOpenPlan(preserveFocus)) {
-                        DiffOpenPlan.PRESERVE_VIA_FILE_EDITOR -> {
-                            ideaEditor = FileEditorManager.getInstance(project)
-                                .openFile(diffFile, editorFocusRequest(preserveFocus))
-                        }
-                        DiffOpenPlan.DELIBERATE_VIA_DIFF_HELPER -> {
+            if (!project.isDisposed) {
+                val requestChain: DiffRequestChain = SimpleDiffRequestChain(request)
+                val diffFile = ChainDiffVirtualFile(requestChain, DiffBundle.message("label.default.diff.editor.tab.name", *arrayOfNulls<Any>(0)))
+                when (diffOpenPlan(preserveFocus)) {
+                    DiffOpenPlan.PRESERVE_VIA_FILE_EDITOR -> {
+                        // The synchronous overload pumps a restricted event loop
+                        // while loading the editor and can discard chat key presses.
+                        // Suspend until loading finishes, leaving normal UI dispatch running.
+                        // Use the JVM no-arg constructor: Kotlin's default-argument
+                        // constructor changes signature between supported IDE builds.
+                        val openOptions = FileEditorOpenOptions::class.java.getConstructor()
+                            .newInstance().withRequestFocus(false)
+                        ideaEditor = FileEditorManagerEx.getInstanceEx(project)
+                            .openFile(diffFile, openOptions)
+                            .allEditors.toTypedArray()
+                    }
+                    DiffOpenPlan.DELIBERATE_VIA_DIFF_HELPER -> {
+                        ApplicationManager.getApplication().invokeAndWait {
+                            if (project.isDisposed) return@invokeAndWait
                             LocalFileSystem.getInstance().findFileByPath(documentUri.path)
                                 ?.let {
                                     ApplicationManager.getApplication().runReadAction { FileEditorManager.getInstance(project).closeFile(it) }
