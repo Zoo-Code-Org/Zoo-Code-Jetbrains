@@ -23,7 +23,7 @@ concurrency:
 jobs:
   prepare:
     name: Find unpublished stable release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.release.outputs.number }}
       marketplace-published: ${{ steps.marketplace.outputs.published }}
@@ -129,7 +129,7 @@ jobs:
     name: Publish Zoo Code ${{ needs.prepare.outputs.version }}
     needs: prepare
     if: needs.prepare.outputs.marketplace-published != 'true' || needs.prepare.outputs.github-released != 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
     environment: jetbrains-marketplace-production
     permissions:

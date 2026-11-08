@@ -17,7 +17,7 @@ concurrency:
 jobs:
   verify:
     name: Connector tests, build, and 2026.3 compatibility gates
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
 
     steps:
