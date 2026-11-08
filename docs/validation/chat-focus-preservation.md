@@ -29,6 +29,15 @@ and preserving diff complete, and all nine provider responses HTTP 200
 establish that the normal-file path was safe. Reproduction is intermittent, so a single green run
 is insufficient evidence to close the issue.
 
+The [latest hosted run](https://github.com/Zoo-Code-Org/Zoo-Code-Jetbrains/actions/runs/42531095791/job/128887638578)
+passed the build, both IntelliJ fixture jobs, and the first live conversation.
+The second live conversation stopped at `mistake_limit_reached` after repeated
+`update_todo_list` calls. All 108 first-turn characters survived and sampled
+focus stayed intact, but required commands and the follow-up were incomplete.
+This is a failed live validation, not a passing result for the latest code.
+The harness now discourages unrelated todo tools and reports this stop promptly;
+these adjustments still need Windows validation.
+
 ## Existing fixes
 
 - `TerminalCreationFocusGuard` restores the captured chat component once when

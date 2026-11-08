@@ -384,7 +384,7 @@ public final class HarnessDriver implements AppLifecycleListener {
             Thread.sleep(300);
         }
         Toolkit.getDefaultToolkit().getSystemClipboard().setContents(
-            new java.awt.datatransfer.StringSelection(fixtureMode ? "Stream the fixture response and finish with attempt_completion." : windowsLive ? "Use tools in this throwaway Windows workspace. Run execute_command with exactly: " + windowsCommand("first") + ". Read src/Main.java, then use apply_diff to replace throwaway with solheim_e2e. Run execute_command with exactly: " + windowsCommand("second") + ". Do not edit .focus-ci or files outside this workspace. Explain each step and finish with attempt_completion. Do not ask questions." : "Use tools in this throwaway workspace: execute_command printf SOLHEIM_FIRST; sleep 5. Read src/Main.java, then apply_diff replacing throwaway with solheim_e2e. Execute printf SOLHEIM_SECOND; sleep 5; cat src/Main.java. No files outside this workspace. Briefly explain each step and finish with attempt_completion. Do not ask questions."),null);
+            new java.awt.datatransfer.StringSelection(fixtureMode ? "Stream the fixture response and finish with attempt_completion." : windowsLive ? "Use tools in this throwaway Windows workspace. Run execute_command with exactly: " + windowsCommand("first") + ". Read src/Main.java, then use apply_diff to replace throwaway with solheim_e2e. Run execute_command with exactly: " + windowsCommand("second") + ". Do not edit .focus-ci or files outside this workspace. Use only execute_command, read_file, apply_diff, and attempt_completion for this task. Do not create or update a todo list. Briefly explain each step and finish with attempt_completion. Do not ask questions." : "Use tools in this throwaway workspace: execute_command printf SOLHEIM_FIRST; sleep 5. Read src/Main.java, then apply_diff replacing throwaway with solheim_e2e. Execute printf SOLHEIM_SECOND; sleep 5; cat src/Main.java. No files outside this workspace. Use only execute_command, read_file, apply_diff, and attempt_completion for this task. Do not create or update a todo list. Briefly explain each step and finish with attempt_completion. Do not ask questions."),null);
         Robot robot = new Robot();
         robot.setAutoDelay(90);
         robot.keyPress(KeyEvent.VK_CONTROL); robot.keyPress(KeyEvent.VK_V);
@@ -837,6 +837,11 @@ public final class HarnessDriver implements AppLifecycleListener {
      */
     private boolean answerCommandAsk(Object webview, JsonObject snap, String ask) throws Exception {
         if (snap.get("lastPartial").getAsBoolean()) return true;
+        if ("mistake_limit_reached".equals(ask)) {
+            fail("modelMistakeLimit", "Provider conversation stopped after repeated tool mistakes; required coverage is incomplete. "
+                    + snap.get("lastText").getAsString());
+            return false;
+        }
         if ("command".equals(ask)) {
             JsonElement text = snap.get("lastText");
             JsonElement tsValue = snap.get("lastTs");
