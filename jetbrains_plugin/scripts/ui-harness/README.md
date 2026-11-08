@@ -170,7 +170,9 @@ can display an IDE warning balloon covering the input.
 
 The `live-solheim` job in the Windows focus workflow uses the protected GitHub
 Environment **solheim** with the Environment secret **SOLHEIM_API_KEY**. Required
-reviewers must approve the exact tested commit before it receives the key. It
+reviewers must approve the exact tested commit before it receives the key. Review
+the workflow and harness script changes before approving: PR-head scripts receive
+the credential in this job. It
 runs only when a PR has the **live-solheim** label, or a manual dispatch selects
 `live_solheim`. Manual dispatch is available after this workflow is on the
 default branch; the label enables testing this PR before merging.

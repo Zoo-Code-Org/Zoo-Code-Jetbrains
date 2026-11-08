@@ -1,7 +1,7 @@
 # Chat focus validation
 
-Updated 2026-11-07. [Issue #5](https://github.com/Zoo-Code-Org/Zoo-Code-Jetbrains/issues/5)
-remains open pending Windows validation of the file and diff loading fix.
+Updated 2026-11-08. [Issue #5](https://github.com/Zoo-Code-Org/Zoo-Code-Jetbrains/issues/5)
+has a file and diff loading fix validated on hosted Windows Server 2022.
 
 ## Current finding and fix
 
@@ -43,7 +43,8 @@ Recorded runs use the bundled Zoo Code extension 3.84.0.
 
 | Environment | Scenario | Result |
 | --- | --- | --- |
-| Windows Server x64, IntelliJ 2025.3 and 2026.2.1 | Previous streaming/diff fixture | Passed in [CI](https://github.com/Zoo-Code-Org/Zoo-Code-Jetbrains/actions/runs/42384965962) |
+| Windows Server 2022, IntelliJ 2025.3 and 2026.2.1 | Streaming plus 12 file/diff sequences | Passed in [CI](https://github.com/Zoo-Code-Org/Zoo-Code-Jetbrains/actions/runs/42409470007) |
+| Windows Server 2022, WebStorm 2026.2.1 | Three fresh live Solheim conversations | All passed in [CI](https://github.com/Zoo-Code-Org/Zoo-Code-Jetbrains/actions/runs/42409470007/job/128516604245) |
 | Linux, IntelliJ 2025.3 | Live Solheim commands and diff | Passed; does not clear intermittent failures |
 | Linux, WebStorm 2026.2.1 | Streaming plus 12 file/diff sequences | Passed with broader fix |
 | Linux, WebStorm 2026.2.1 | Live Solheim commands and diff | Passed with broader fix |
@@ -74,7 +75,8 @@ build, OS, and plugin digest, and verify that required tools actually ran before
 accepting a pass. Startup dialogs and covered input targets are setup failures,
 not evidence of a streaming focus regression.
 
-Windows validation of the broader file-and-diff fix is pending. Hosted Windows Server results
+The broader fix passed both Windows fixture jobs and three fresh live Solheim
+conversations, including native typing in both turns, terminal commands, edits,
+and preserving diffs. This supports closing #5. Hosted Windows Server results
 do not establish behavior on the reporter's Windows 11 installation; use an
 interactive Windows 11 x64 runner or a manual reproduction for that configuration.
-Keep #5 open until the input loss is resolved and the required paths are validated.

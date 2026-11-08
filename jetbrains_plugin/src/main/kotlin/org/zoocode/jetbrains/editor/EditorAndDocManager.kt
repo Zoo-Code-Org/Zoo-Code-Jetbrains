@@ -211,14 +211,18 @@ class EditorAndDocManager(val project: Project) : Disposable {
 
 
     private suspend fun openFilePreservingFocus(file: VirtualFile): Array<FileEditor> {
+        if (project.isDisposed) throw CancellationException("Project disposed before editor open")
         // Synchronous editor loading pumps a restricted event loop that can
         // discard chat keys, even when no focus transfer is requested.
         // Invoke the JVM no-arg constructor: Kotlin's default-argument constructor
         // changes signature between supported IDE builds.
         val openOptions = FileEditorOpenOptions::class.java.getConstructor()
             .newInstance().withRequestFocus(false)
-        return FileEditorManagerEx.getInstanceEx(project)
+        val editors = FileEditorManagerEx.getInstanceEx(project)
             .openFile(file, openOptions).allEditors.toTypedArray()
+        // Suspension can outlive the project; do not create handles or tabs afterward.
+        if (project.isDisposed) throw CancellationException("Project disposed during editor open")
+        return editors
     }
 
     /**

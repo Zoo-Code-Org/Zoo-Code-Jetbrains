@@ -2,6 +2,7 @@
 import http.client
 import http.server
 import threading
+import urllib.error
 import unittest
 from unittest.mock import patch
 import solheim_proxy as relay
@@ -21,7 +22,7 @@ class RelayAccessTest(unittest.TestCase):
 
     def request(self, headers, body=None, method='GET'):
         connection = http.client.HTTPConnection('127.0.0.1', self.server.server_port)
-        with patch.object(relay.urllib.request, 'urlopen') as upstream:
+        with patch.object(relay.UPSTREAM, 'open') as upstream:
             connection.request(method, '/v1/models', body=body, headers=headers)
             response = connection.getresponse()
             response.read()
@@ -32,7 +33,7 @@ class RelayAccessTest(unittest.TestCase):
     def test_local_health_is_authenticated_and_does_not_contact_upstream(self):
         for token, expected in [('wrong', 401), (relay.TOKEN, 200)]:
             connection = http.client.HTTPConnection('127.0.0.1', self.server.server_port)
-            with patch.object(relay.urllib.request, 'urlopen') as upstream:
+            with patch.object(relay.UPSTREAM, 'open') as upstream:
                 connection.request('GET', '/v1/health', headers={'Authorization': 'Bearer ' + token})
                 response = connection.getresponse()
                 self.assertEqual(expected, response.status)
@@ -91,7 +92,7 @@ class RelayAccessTest(unittest.TestCase):
         response = unittest.mock.Mock(status=200, headers={'Content-Type': 'application/json'})
         response.read1.side_effect = [b'{"data":[]}', b'']
         connection = http.client.HTTPConnection('127.0.0.1', self.server.server_port)
-        with patch.object(relay.urllib.request, 'urlopen', return_value=response) as upstream, patch.object(relay, 'record'):
+        with patch.object(relay.UPSTREAM, 'open', return_value=response) as upstream, patch.object(relay, 'record'):
             connection.request('GET', '/v1/models', headers={'Authorization': 'Bearer ' + relay.TOKEN})
             result = connection.getresponse()
             self.assertEqual(200, result.status)
@@ -105,7 +106,7 @@ class RelayAccessTest(unittest.TestCase):
         response = unittest.mock.Mock(status=200, headers={'Content-Type': 'text/event-stream'})
         response.read1.side_effect = [b'data: [DONE]\n', b'']
         connection = http.client.HTTPConnection('127.0.0.1', self.server.server_port)
-        with patch.object(relay.urllib.request, 'urlopen', return_value=response) as upstream, patch.object(relay, 'record'):
+        with patch.object(relay.UPSTREAM, 'open', return_value=response) as upstream, patch.object(relay, 'record'):
             connection.request('POST', '/v1/chat/completions', body=body,
                                headers={'Authorization': 'Bearer ' + relay.TOKEN})
             result = connection.getresponse()
@@ -114,6 +115,41 @@ class RelayAccessTest(unittest.TestCase):
             self.assertEqual(body, upstream.call_args.args[0].data)
             self.assertEqual('POST', upstream.call_args.args[0].get_method())
             connection.close()
+
+
+class RedirectTest(unittest.TestCase):
+    def test_redirects_never_reach_destination(self):
+        class RedirectServer(http.server.BaseHTTPRequestHandler):
+            paths = []
+
+            def log_message(self, *_):
+                pass
+
+            def do_GET(self):
+                self.paths.append(self.path)
+                self.send_response(int(self.path[1:]))
+                self.send_header('Location', '/destination')
+                self.send_header('Content-Length', '0')
+                self.end_headers()
+
+        server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), RedirectServer)
+        worker = threading.Thread(target=server.serve_forever)
+        worker.start()
+        try:
+            for status in [301, 302, 303, 307, 308]:
+                with self.subTest(status=status):
+                    request = relay.urllib.request.Request(
+                        'http://127.0.0.1:' + str(server.server_port) + '/' + str(status),
+                        headers={'Authorization': 'Bearer test-only-key'})
+                    with self.assertRaises(urllib.error.HTTPError) as caught:
+                        relay.UPSTREAM.open(request, timeout=5)
+                    self.assertEqual(status, caught.exception.code)
+                    caught.exception.close()
+            self.assertEqual(['/301', '/302', '/303', '/307', '/308'], RedirectServer.paths)
+        finally:
+            server.shutdown()
+            server.server_close()
+            worker.join()
 
 
 if __name__ == '__main__':

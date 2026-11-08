@@ -433,7 +433,7 @@ public final class HarnessDriver implements AppLifecycleListener {
             record("P_owner_"+sample,swingFocusOwnerIdentity());
             if (!exact) record("P_typingLossAtSample",sample);
             String ask=snap.get("lastAsk").isJsonNull()?"":snap.get("lastAsk").getAsString();
-            if ("completion_result".equals(ask) && !snap.get("lastPartial").getAsBoolean()) {completed=true;break;}
+            if ("completion_result".equals(ask) && !snap.get("lastPartial").getAsBoolean() && sample>2) {completed=true;break;}
             if (!answerCommandAsk(webview, snap, ask)) return;
         }
         record("P_realTaskCompleted",completed);

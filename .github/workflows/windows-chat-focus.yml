@@ -29,10 +29,11 @@ permissions:
 
 concurrency:
   group: windows-chat-focus-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event.action != 'labeled' }}
 
 jobs:
   build:
+    if: github.event.action != 'labeled' || github.event.label.name == 'live-solheim'
     name: Build this checkout with the pinned extension
     # Keep native dependency builds independent of ubuntu-latest image changes.
     runs-on: ubuntu-24.04
@@ -61,9 +62,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --no-install-recommends build-essential libx11-dev libxkbfile-dev pkg-config
-      - name: Validate the local streaming fixture
+      - name: Validate the local streaming fixture and authenticated relay
         working-directory: jetbrains_plugin/scripts/ui-harness
-        run: python3 -m unittest -v test_streaming_fixture.py
+        run: python3 -m unittest -v test_streaming_fixture.py test_solheim_proxy.py
       - name: Prepare extension host source
         run: ./scripts/setup.sh --skip-deps --verbose
       - name: Cache the cross-platform VS Code runtime
@@ -164,8 +165,6 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - name: Validate relay authentication without provider calls
-        run: python -m unittest discover -s jetbrains_plugin/scripts/ui-harness -p test_solheim_proxy.py -v
       - uses: actions/download-artifact@v4
         with:
           name: chat-focus-plugin

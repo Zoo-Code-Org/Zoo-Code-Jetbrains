@@ -26,6 +26,15 @@ def record(**fields):
         output.write(json.dumps({'time': time.time(), **fields}) + '\n')
 
 
+class RefuseRedirects(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, request, response, code, message, headers, new_url):
+        # Never send provider credentials to a redirected URL.
+        return None
+
+
+UPSTREAM = urllib.request.build_opener(RefuseRedirects())
+
+
 class Relay(http.server.BaseHTTPRequestHandler):
     protocol_version = 'HTTP/1.1'
 
@@ -85,7 +94,7 @@ class Relay(http.server.BaseHTTPRequestHandler):
                                         headers={'Authorization': 'Bearer ' + KEY,
                                                  'Content-Type': 'application/json'})
         try:
-            response = urllib.request.urlopen(request, timeout=180)
+            response = UPSTREAM.open(request, timeout=180)
         except urllib.error.HTTPError as error:
             response = error
         except Exception as error:

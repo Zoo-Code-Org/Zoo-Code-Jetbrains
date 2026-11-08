@@ -206,11 +206,12 @@ automatically activate chat.
 
 ### 3.3 Intermittent First-Turn Draft Character Loss
 
-Open. The Windows live run lost one character during a preserving normal-file
+Fixed and validated on hosted Windows Server 2022. An earlier Windows live run lost one character during a preserving normal-file
 open before the diff began. Preserving file and diff opens now share the
 suspending file-editor API to avoid the synchronous loading loop. The expanded
 regression opens 12 Java files followed by diffs while typing. The expanded
-local regression and live Solheim passed; Windows verification remains required. See
+local regression, both Windows fixture jobs, and three fresh Windows live Solheim
+conversations passed. The reporter's Windows 11 configuration remains unverified. See
 [the validation report](validation/chat-focus-preservation.md).
 
 ## 4. General Troubleshooting Steps
