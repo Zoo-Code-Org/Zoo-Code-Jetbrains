@@ -28,7 +28,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: windows-chat-focus-${{ github.ref }}
+  # Skipped label events must not replace a pending build for this PR.
+  group: windows-chat-focus-${{ github.ref }}-${{ github.event.action == 'labeled' && github.event.label.name != 'live-solheim' && 'ignored-label' || 'validation' }}
   cancel-in-progress: ${{ github.event.action != 'labeled' }}
 
 jobs:

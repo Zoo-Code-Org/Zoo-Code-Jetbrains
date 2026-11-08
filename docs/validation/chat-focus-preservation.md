@@ -1,7 +1,9 @@
 # Chat focus validation
 
 Updated 2026-11-08. [Issue #5](https://github.com/Zoo-Code-Org/Zoo-Code-Jetbrains/issues/5)
-has a file and diff loading fix validated on hosted Windows Server 2022.
+has a file and diff loading fix that passed in hosted CI. The linked run predates
+the latest workflow, harness, Kotlin, and relay changes, which require a fresh
+Windows run. Reporter or Windows 11 confirmation remains required before closing #5.
 
 ## Current finding and fix
 
@@ -39,7 +41,9 @@ Deliberate user actions that focus the terminal are expected behavior.
 
 ## Test coverage
 
-Recorded runs use the bundled Zoo Code extension 3.84.0.
+Recorded runs use the bundled Zoo Code extension 3.84.0. The Windows results below
+predate the latest workflow, harness, Kotlin, and relay changes; those changes
+require fresh CI validation.
 
 | Environment | Scenario | Result |
 | --- | --- | --- |
@@ -75,8 +79,8 @@ build, OS, and plugin digest, and verify that required tools actually ran before
 accepting a pass. Startup dialogs and covered input targets are setup failures,
 not evidence of a streaming focus regression.
 
-The broader fix passed both Windows fixture jobs and three fresh live Solheim
+The linked hosted CI run passed both Windows fixture jobs and three fresh live Solheim
 conversations, including native typing in both turns, terminal commands, edits,
-and preserving diffs. This supports closing #5. Hosted Windows Server results
-do not establish behavior on the reporter's Windows 11 installation; use an
-interactive Windows 11 x64 runner or a manual reproduction for that configuration.
+and preserving diffs. Hosted Windows Server evidence supports the fix. Close #5
+only after the reporter or a Windows 11 run confirms it. Use an interactive
+Windows 11 x64 runner or a manual reproduction for that configuration.

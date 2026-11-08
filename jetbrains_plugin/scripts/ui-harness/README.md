@@ -57,8 +57,10 @@ request only when the command is one of the three fixture commands, for example
 separate from a real project.
 Stop the relay, unset the token, and remove the private key file afterward.
 The disposable profile contains the now-expired local token; remove it when
-finished with the evidence. Check traces as well as status: a pass does not
-clear the intermittent first-editor key-delivery gap recorded in
+finished with the evidence. Check traces as well as status: a single pass is
+insufficient for an intermittent input problem. Hosted Windows Server results
+support the fix, but the linked run predates the latest workflow, harness, Kotlin,
+and relay changes. Windows 11 remains unverified. See
 [the validation report](../../../docs/validation/chat-focus-preservation.md).
 
 Relay access tests, without provider calls:
@@ -172,7 +174,8 @@ The `live-solheim` job in the Windows focus workflow uses the protected GitHub
 Environment **solheim** with the Environment secret **SOLHEIM_API_KEY**. Required
 reviewers must approve the exact tested commit before it receives the key. Review
 the workflow and harness script changes before approving: PR-head scripts receive
-the credential in this job. It
+the credential in this job. The environment currently allows self-approval and
+administrator bypass; approval does not guarantee an independent review. It
 runs only when a PR has the **live-solheim** label, or a manual dispatch selects
 `live_solheim`. Manual dispatch is available after this workflow is on the
 default branch; the label enables testing this PR before merging.
@@ -224,9 +227,10 @@ locally:
   -DeadlineSeconds 780 -EvidenceDir C:/temp/live-focus-1
 ```
 
-No live-provider run is claimed by these instructions. Keep issue #5 open until
-artifacts show the required tool paths and input preservation on the target
-configuration; a Windows Server run alone does not verify Windows 11.
+The linked hosted Windows Server run supports the fix. Close #5 only after
+the reporter or a Windows 11 run confirms it; a Windows Server run alone does not
+verify Windows 11. Later workflow, harness, Kotlin, and relay changes require
+fresh CI validation.
 
 ## Local WebStorm validation
 
