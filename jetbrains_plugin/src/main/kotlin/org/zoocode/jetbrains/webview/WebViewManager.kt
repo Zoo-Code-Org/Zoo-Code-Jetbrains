@@ -14,6 +14,7 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.ui.jcef.JBCefBrowser
+import com.intellij.ui.jcef.JBCefBrowserBase
 import com.intellij.ui.jcef.JBCefJSQuery
 import org.zoocode.jetbrains.core.PluginContext
 import org.zoocode.jetbrains.core.ServiceProxyRegistry
@@ -947,7 +948,7 @@ class WebViewInstance(
 
     private fun setupJSBridge() {
         // Create JS query object to handle messages from webview
-        jsQuery = JBCefJSQuery.create(browser)
+        jsQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
 
         // Set callback for receiving messages from webview
         jsQuery?.addHandler { message ->

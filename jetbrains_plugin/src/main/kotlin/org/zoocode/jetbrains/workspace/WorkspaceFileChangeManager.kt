@@ -5,20 +5,15 @@
 package org.zoocode.jetbrains.workspace
 
 import com.intellij.openapi.Disposable
-import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.project.ProjectManager
-import com.intellij.openapi.project.ProjectManagerListener
-import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vfs.*
 import com.intellij.openapi.vfs.newvfs.BulkFileListener
 import com.intellij.openapi.vfs.newvfs.events.*
 import com.intellij.util.messages.MessageBusConnection
 import org.zoocode.jetbrains.core.PluginContext
 import org.zoocode.jetbrains.core.ServiceProxyRegistry
-import org.zoocode.jetbrains.core.WorkspaceManager
 import org.zoocode.jetbrains.events.*
 import org.zoocode.jetbrains.ipc.proxy.interfaces.FileSystemEvents
 import java.util.concurrent.ConcurrentHashMap
@@ -35,72 +30,12 @@ class WorkspaceFileChangeManager(val project: Project) : Disposable {
     // Record registered file listener connections
     private val vfsConnections = ConcurrentHashMap<Project, MessageBusConnection>()
     
-    // Record project workspace directory paths
-    private val projectWorkspacePaths = ConcurrentHashMap<Project, String>()
-
-    // Project connection
-    private var projectConnection: MessageBusConnection? = null
-
-    // Project listener
-    private val projectListener = object : ProjectManagerListener {
-        override fun projectOpened(project: Project) {
-            registerFileListener(project)
-            // Record initial project workspace directory
-            project.basePath?.let { projectWorkspacePaths[project] = it }
-            // Trigger workspace root change event
-            triggerWorkspaceRootChangeEvent(project, null, project.basePath ?: "")
-        }
-
-        override fun projectClosed(project: Project) {
-            unregisterFileListener(project)
-            // Remove project workspace directory record
-            projectWorkspacePaths.remove(project)
-        }
-    }
-
     init {
+        // This service starts when this project's extension host is initialized.
+        // Each project owns its watcher; watching every open project here would
+        // duplicate events and retain other projects until this one is disposed.
         logger.info("Initialize workspace file change manager")
-
-        // Listen for project open/close events
-        projectConnection = ApplicationManager.getApplication().messageBus.connect(this)
-        projectConnection?.subscribe(ProjectManager.TOPIC, projectListener)
-
-        // Register file listeners for already opened projects
-        val openProjects = ProjectManager.getInstance().openProjects
-        for (project in openProjects) {
-            registerFileListener(project)
-            // Record workspace directory for opened projects
-            project.basePath?.let { projectWorkspacePaths[project] = it }
-        }
-    }
-
-    /**
-     * Trigger workspace root change event
-     * @param project Project
-     * @param oldPath Old workspace directory path
-     * @param newPath New workspace directory path
-     */
-    private fun triggerWorkspaceRootChangeEvent(project: Project, oldPath: String?, newPath: String) {
-        logger.debug("Trigger workspace root change event: ${project.name}, old path: $oldPath, new path: $newPath")
-        
-        // Create workspace root change data
-        val workspaceChangeData = WorkspaceRootChangeData(project, oldPath, newPath)
-        
-        // Send workspace root change event via EventBus
-        project.getService(ProjectEventBus::class.java).emitInApplication(WorkspaceRootChangeEvent, workspaceChangeData)
-        
-        // Get ExtHostWorkspace proxy
-        val extHostWorkspace = PluginContext.getInstance(project).getRPCProtocol()?.getProxy(ServiceProxyRegistry.ExtHostContext.ExtHostWorkspace)
-
-        // Get current workspace data
-        val workspaceData = project.getService(WorkspaceManager::class.java).getProjectWorkspaceData(project)
-
-        extHostWorkspace?.let {
-            if(workspaceData != null) {
-                logger.debug("Send workspace root change to extension process: ${workspaceData.name}, folders: ${workspaceData.folders.size}")
-                it.acceptWorkspaceData(workspaceData)
-            }
-        }
+        registerFileListener(project)
     }
 
     /**
@@ -117,7 +52,7 @@ class WorkspaceFileChangeManager(val project: Project) : Disposable {
 
         try {
             // Create connection and subscribe to VFS change events
-            val connection = project.messageBus.connect()
+            val connection = project.messageBus.connect(this)
 
             // Add virtual file system listener
             connection.subscribe(VirtualFileManager.VFS_CHANGES, object : BulkFileListener {
@@ -131,23 +66,6 @@ class WorkspaceFileChangeManager(val project: Project) : Disposable {
 
         } catch (e: Exception) {
             logger.error("Failed to register file listener for project ${project.name}", e)
-        }
-    }
-
-    /**
-     * Unregister file listener
-     * @param project Project to unregister listener from
-     */
-    private fun unregisterFileListener(project: Project) {
-        val connection = vfsConnections.remove(project)
-        if (connection != null) {
-            logger.info("Unregister file listener for project ${project.name}")
-
-            try {
-                connection.disconnect()
-            } catch (e: Exception) {
-                logger.error("Failed to unregister file listener for project ${project.name}", e)
-            }
         }
     }
 
@@ -357,10 +275,6 @@ class WorkspaceFileChangeManager(val project: Project) : Disposable {
         logger.info("Release workspace file change manager resources")
 
         try {
-            // Disconnect project listener connection
-            projectConnection?.disconnect()
-            projectConnection = null
-
             // Release all file listener connections
             vfsConnections.forEach { (project, connection) ->
                 try {

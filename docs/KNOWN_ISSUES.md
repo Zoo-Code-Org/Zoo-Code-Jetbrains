@@ -2,6 +2,11 @@
 
 This document records the known issues, limitations, and solutions for the Zoo Code JetBrains project.
 
+The 3.96.0 Marketplace API warnings and JCEF compatibility work are tracked in
+[issue #16](https://github.com/Zoo-Code-Org/Zoo-Code-Jetbrains/issues/16).
+The supplied IntelliJ 2023.3.8 report says compatible; release verification and
+the internal/experimental editor API migration remain open.
+
 ## 1. JCEF Related Issues
 
 The current plugin implementation heavily relies on JCEF capabilities. In environments where JCEF cannot function properly, the plugin may fail to load normally.

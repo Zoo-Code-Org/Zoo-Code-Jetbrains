@@ -3,8 +3,46 @@
 The source and runner in this directory work without the ignored investigation
 fixture. Prerequisites: a JCEF-enabled IntelliJ installation with JBR `javac`
 (tested with IU-253.28294.334), `jar`, `unzip`, Xvfb, xdotool, and Openbox.
-Build the ZooCode plugin distribution first. Its Kotlin plugin version is
-3.78.0; the embedded Zoo Code extension version is 3.84.0.
+Supply a complete ZooCode release distribution ZIP. The tested plugin and
+embedded extension versions come from that archive, not the harness source.
+
+## Testing Zoo Code 3.96.0
+
+To test the published release, download its JetBrains plugin ZIP and pass it
+directly to `PLUGIN_ZIP` on Linux or `-PluginZip` on Windows. This exercises the
+released binary, including its bundled extension and runtime. Renaming an older
+ZIP or overriding only `pluginVersion` does not produce a 3.96.0 release test.
+
+To test the current Kotlin changes with extension 3.96.0, build from the repository
+root:
+
+```sh
+ZOO_EXTENSION_VERSION=3.96.0 ./scripts/build.sh --mode release --clean --verbose
+```
+
+The build downloads that extension version and packages this checkout as 3.96.0.
+This is a candidate build, distinct from the published release. The build updates
+`gradle.properties` and replaces generated build outputs. Run it in a separate
+checkout when retaining another build for comparison.
+
+Use the resulting ZIP with the Linux instructions below or the Windows command:
+
+```powershell
+./run-windows.ps1 -IdeDir C:/tools/idea -PluginZip C:/build/ZooCode-3.96.0.zip `
+  -EvidenceDir C:/temp/focus-3.96.0
+```
+
+The credential-free fixture exercises real chat streaming, typing, and editor
+opens. Live Solheim testing additionally covers model-driven terminal and diff
+operations and needs the provider setup documented below. Gradle tests alone do
+not exercise the bundled extension in a running IDE.
+
+The Windows CI workflow pins extension 3.96.0 and builds the checkout;
+it has no input for an existing release ZIP. Its IDEA matrix is 2025.3 and
+2026.2.1, so those jobs do not establish compatibility with IDEA 2023.3.8.
+Record the exact ZIP, IDE version, and evidence directory when comparing builds.
+
+## Linux live setup
 
 Store the Solheim key in a private file outside the repository (mode 0600).
 Generate a random per-run local token. Run the `export` line in both shells, with the same value:
@@ -25,7 +63,7 @@ In a second shell, export the same `SOLHEIM_RELAY_TOKEN` value. Then run from th
 
 ```sh
 IDE_DIR=/path/to/intellij \
-PLUGIN_ZIP=/path/to/ZooCode-3.78.0.zip \
+PLUGIN_ZIP=/path/to/ZooCode-3.96.0.zip \
 HARNESS_WM_BIN=/usr/bin/openbox \
 HARNESS_HEAP_MB=768 HARNESS_CPU_COUNT=4 DEADLINE_SECONDS=650 \
 bash run-solheim.sh
@@ -104,7 +142,7 @@ nothing.
 ## Windows GitHub Actions regression test (issue #5)
 
 `.github/workflows/windows-chat-focus.yml` builds the plugin from the tested
-checkout with Zoo Code extension **3.84.0**, then runs the same Java driver on
+checkout with Zoo Code extension **3.96.0**, then runs the same Java driver on
 `windows-2022` with IntelliJ **2025.3** and **2026.2.1**. It runs for pull requests
 that change the harness or relevant implementation, and supports manual dispatch
 once the workflow exists on the default branch. It does not publish a plugin.
