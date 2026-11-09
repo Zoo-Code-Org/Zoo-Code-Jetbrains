@@ -328,6 +328,10 @@ tasks {
     runPluginVerifier {
         // Verifier releases: https://repo1.maven.org/maven2/org/jetbrains/intellij/plugins/verifier-cli/
         verifierVersion.set("1.410")
+        verificationReportsDir.set(
+            providers.gradleProperty("verifierReportsDir")
+                .orElse(layout.buildDirectory.dir("reports/pluginVerifier").map { it.asFile.absolutePath })
+        )
         val idea263Build = providers.gradleProperty("idea263Build").orElse("263.5701.42")
         val explicitVersions = providers.gradleProperty("verifierIdeVersion").orNull
         ideVersions.set(listOf(explicitVersions ?: "IC-${idea263Build.get()}"))

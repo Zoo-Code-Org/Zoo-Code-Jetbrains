@@ -4,7 +4,52 @@ This document records the known issues, limitations, and solutions for the Zoo C
 
 The 3.96.0 Marketplace API warnings and JCEF compatibility work are tracked in
 [issue #16](https://github.com/Zoo-Code-Org/Zoo-Code-Jetbrains/issues/16).
-Release verification and the internal/experimental editor API migration remain open.
+The additional reupload warnings are tracked in
+[issue #18](https://github.com/Zoo-Code-Org/Zoo-Code-Jetbrains/issues/18).
+
+### API migration and supported versions
+
+The plugin still targets IntelliJ 2023.3 and Java 17. Issue #18 removes the
+obsolete OS/PATH helpers, thread-ID logging, diff processor access, and focus
+settling callback. Diff tabs are closed through `FileEditorManager.closeFile`
+using the editor's public `filesToRefresh` list.
+
+The following migrations remain constrained by that baseline:
+
+- The preserving editor path uses the suspending internal API to avoid lost
+  chat keystrokes. Current upstream source offers an experimental public async
+  API with completion; 2023.3 has no `requestOpenFile`, and the pinned 2026.3
+  build exposes only a fire-and-forget `void requestOpenFile(VirtualFile)`.
+  The ordinary synchronous open is deprecated in current
+  IDEs as well. Replacing either requires a tested compatibility strategy;
+  switching back to synchronous loading would reintroduce the focus regression.
+- `ProxySettings` and `ShellExecOptionsCustomizer` are the upstream replacements
+  for `HttpConfigurable` and `LocalTerminalCustomizer`, but are absent from
+  2023.3. The legacy terminal runner hooks are also needed by the old SDK.
+- 2023.3 exposes only the varargs `FileSaverDescriptor` constructor; newer IDEs
+  deprecate that signature in favor of the two-argument constructor and extension
+  filters. A source-only constructor change cannot span both signatures.
+
+See JetBrains' [current editor API](https://github.com/JetBrains/intellij-community/blob/master/platform/analysis-api/src/com/intellij/openapi/fileEditor/FileEditorManager.kt),
+[proxy migration notices](https://github.com/JetBrains/intellij-community/blob/master/platform/platform-api/src/com/intellij/util/net/HttpConfigurable.java),
+[terminal customizer migration](https://github.com/JetBrains/intellij-community/blob/master/plugins/terminal/src/org/jetbrains/plugins/terminal/LocalTerminalCustomizer.java),
+and [multi-version guidance](https://plugins.jetbrains.com/docs/intellij/build-number-ranges.html#targeting-multiple-ide-versions).
+These findings remain open; no reflection or suppression removes the internal API dependency.
+
+PR and release CI run Plugin Verifier against 2023.3 and the pinned 2026.3 EAP,
+and retain separate reports plus the plugin ZIP's SHA-256. The verifier gate
+currently fails for binary compatibility problems and invalid plugins; warnings
+remain visible in the reports. Native typing, terminal, and diff tests remain
+required to validate runtime behavior, including the environment-approved live
+Solheim suite. The reupload's exact failing IDE/build and artifact checksum
+have not yet been supplied, so those CI targets do not reproduce that report by
+assumption.
+
+Local verification on 2026-11-09 used Plugin Verifier 1.410 and the same plugin
+ZIP for IC-233.11799.241 and IC-263.5701.42. Both reported compatible; the latter
+still reported 3 internal, 9 scheduled-for-removal, and 4 deprecated API usages.
+The focused JVM suites passed 116 tests with 6 skips, and the 2026.3 terminal
+dispatch smoke check passed. Native UI integration tests were not run locally.
 
 ## 1. JCEF Related Issues
 

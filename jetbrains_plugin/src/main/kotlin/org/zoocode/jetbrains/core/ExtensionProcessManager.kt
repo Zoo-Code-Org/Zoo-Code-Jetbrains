@@ -4,7 +4,7 @@
 
 package org.zoocode.jetbrains.core
 
-import com.intellij.execution.configurations.PathEnvironmentVariableUtil
+import org.zoocode.jetbrains.util.findExecutableOnPath
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.util.SystemInfo
@@ -125,7 +125,7 @@ class ExtensionProcessManager : Disposable {
             
             // Build complete PATH
             envVars["PATH"] = buildEnhancedPath(envVars, nodePath)
-            LOG.info("Enhanced PATH for ${SystemInfo.getOsNameAndVersion()}: ${envVars["PATH"]}")
+            LOG.info("Enhanced PATH for ${System.getProperty("os.name")} ${System.getProperty("os.version")}: ${envVars["PATH"]}")
             
             // Add key environment variables
             if (isUds) {
@@ -384,7 +384,10 @@ class ExtensionProcessManager : Disposable {
      * Find executable in system path
      */
     private fun findExecutableInPath(name: String): String? {
-        val nodePath = PathEnvironmentVariableUtil.findExecutableInPathOnAnyOS("node")?.absolutePath
+        val nodePath = findExecutableOnPath(
+            name, EnvironmentUtil.getValue("PATH"), SystemInfo.isWindows,
+            EnvironmentUtil.getValue("PATHEXT")
+        )?.absolutePath
         LOG.info("System Node path: $nodePath")
         return nodePath
     }

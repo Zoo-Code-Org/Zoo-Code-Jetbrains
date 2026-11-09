@@ -10,9 +10,9 @@ import com.intellij.diff.chains.DiffRequestChain
 import com.intellij.diff.chains.SimpleDiffRequestChain
 import com.intellij.diff.contents.DiffContent
 import com.intellij.diff.contents.FileDocumentContentImpl
+import com.intellij.diff.editor.DiffVirtualFileBase
 import com.intellij.diff.editor.ChainDiffVirtualFile
 import com.intellij.diff.editor.DiffEditorTabFilesManager
-import com.intellij.diff.editor.DiffRequestProcessorEditor
 import com.intellij.diff.requests.SimpleDiffRequest
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
@@ -450,17 +450,12 @@ class EditorAndDocManager(val project: Project) : Disposable {
                         }
                     }else{
                         ApplicationManager.getApplication().invokeAndWait {
-                            FileEditorManager.getInstance(project).allEditors.forEach {
-                                if(it is DiffRequestProcessorEditor && handler.diff){
-                                    val differ = it
-                                    differ.processor.activeRequest?.let { req ->
-                                        for (filesToRefresh in req.filesToRefresh) {
-                                            if(filesToRefresh.path == handler.document.uri.path){
-                                                differ.dispose()
-                                            }
-                                        }
-                                    }
-                                }
+                            if (handler.diff && !project.isDisposed) {
+                                val manager = FileEditorManager.getInstance(project)
+                                manager.allEditors.filter { editor ->
+                                    editor.file is DiffVirtualFileBase &&
+                                        editor.filesToRefresh.any { it.path == handler.document.uri.path }
+                                }.map { it.file }.distinct().forEach(manager::closeFile)
                             }
 
                         }

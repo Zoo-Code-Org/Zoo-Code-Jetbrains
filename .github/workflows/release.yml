@@ -253,6 +253,23 @@ jobs:
           }
           unzip -q "$ide_zip" -d "$ide_dir"
 
+      - name: Record the plugin artifact checksum
+        working-directory: jetbrains_plugin
+        run: sha256sum build/distributions/*.zip > build/plugin-sha256.txt
+
+      - name: Verify plugin compatibility with the oldest supported IDEA
+        working-directory: jetbrains_plugin
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: >
+          ./gradlew runPluginVerifier
+          -PdebugMode=release
+          -PvscodePlugin=zoo-code
+          -PpluginVersion="$VERSION"
+          -PverifierIdeVersion=IC-2023.3
+          -PverifierReportsDir=build/reports/pluginVerifier/233
+          --no-configuration-cache
+
       - name: Verify plugin compatibility with IDEA 2026.3
         working-directory: jetbrains_plugin
         env:
@@ -265,7 +282,12 @@ jobs:
             -PvscodePlugin=zoo-code \
             -PpluginVersion="$VERSION" \
             -PverifierLocalIde="build/ideaIC-${verifier_build}" \
+            -PverifierReportsDir=build/reports/pluginVerifier/263 \
             --no-configuration-cache
+
+      - name: Confirm verification used the recorded artifact
+        working-directory: jetbrains_plugin
+        run: sha256sum --check build/plugin-sha256.txt
 
       # The verifier cannot see a silently non-overriding createTtyConnector
       # signature; this step proves the dispatch binds on the exact downloaded build.
@@ -282,6 +304,16 @@ jobs:
             -PpluginVersion="$VERSION" \
             -PsmokeLocalIde="build/ideaIC-${verifier_build}" \
             --no-configuration-cache
+
+      - name: Store compatibility reports and artifact identity
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-plugin-verifier-${{ github.sha }}
+          path: |
+            jetbrains_plugin/build/reports/pluginVerifier/**
+            jetbrains_plugin/build/plugin-sha256.txt
+          if-no-files-found: warn
 
       - name: Publish to JetBrains Marketplace
         if: needs.prepare.outputs.marketplace-published != 'true'

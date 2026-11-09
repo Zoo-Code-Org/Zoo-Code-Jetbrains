@@ -4,7 +4,6 @@
 package org.zoocode.jetbrains.util
 
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.wm.IdeFocusManager
 import com.intellij.openapi.wm.ToolWindowManager
 import java.awt.AWTEvent
 import java.awt.Component
@@ -100,11 +99,9 @@ private object SwingTerminalCreationFocusEnvironment : TerminalCreationFocusEnvi
         return AutoCloseable { timer.stop() }
     }
     override fun afterCreation(project: Project, action: () -> Unit) {
-        // Inline focus settling runs before newTab's queued activation.
-        ToolWindowManager.getInstance(project).invokeLater {
-            if (project.isDisposed) action()
-            else IdeFocusManager.getInstance(project).doWhenFocusSettlesDown { action() }
-        }
+        // Tool-window scheduling already defers until activation. The deprecated
+        // focus-settling callback ran inline on the EDT, adding no further wait.
+        ToolWindowManager.getInstance(project).invokeLater { action() }
     }
     override fun isShowing(component: Component): Boolean = component.isShowing
     override fun requestFocus(component: Component) { component.requestFocusInWindow() }

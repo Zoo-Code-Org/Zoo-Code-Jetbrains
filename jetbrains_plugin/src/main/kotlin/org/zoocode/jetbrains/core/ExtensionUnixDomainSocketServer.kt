@@ -108,7 +108,7 @@ class ExtensionUnixDomainSocketServer : ISocketServer {
     // Listen and accept UDS client connections
     private fun acceptUdsConnections() {
         val server = udsServerChannel ?: return
-        logger.info("[UDS] Waiting for connections..., tid: ${Thread.currentThread().id}")
+        logger.info("[UDS] Waiting for connections..., thread: ${Thread.currentThread().name}")
         while (isRunning && !Thread.currentThread().isInterrupted) {
             try {
                 val clientChannel = server.accept() // Block and wait for new connection
