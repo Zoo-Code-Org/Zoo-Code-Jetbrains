@@ -150,8 +150,8 @@ fun decodeDiffPreserveFocus(columnOrOptions: Any?): Boolean = decodePreserveFocu
 /**
  * Maps the preservation intent to the platform focus boolean. The
  * [FileEditorManager.openFile] boolean requests editor focus, so a preserving
- * open must request the inverse. Both open calls in [EditorAndDocManager] pass
- * through this mapping.
+ * open must request the inverse. Deliberate file opens use this mapping; preserving
+ * file and diff opens use the suspending API with an explicit false focus option.
  */
 fun editorFocusRequest(preserveFocus: Boolean): Boolean = !preserveFocus
 

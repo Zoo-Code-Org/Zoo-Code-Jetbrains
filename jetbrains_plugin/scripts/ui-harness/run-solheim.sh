@@ -2,10 +2,18 @@ set -uo pipefail
 SOURCE_DIR="$(cd "$(dirname "$0")" && pwd)"
 : "${IDE_DIR:?Set IDE_DIR to a JCEF-enabled IntelliJ installation}"
 : "${PLUGIN_ZIP:?Set PLUGIN_ZIP to the built ZooCode distribution}"
-: "${SOLHEIM_RELAY_TOKEN:?Set the same random token as the relay}"
+if [ "${HARNESS_FIXTURE:-false}" != true ]; then
+  : "${SOLHEIM_RELAY_TOKEN:?Set the same random token as the relay}"
+fi
 : "${HARNESS_WM_BIN:?Set HARNESS_WM_BIN to openbox or an equivalent wrapper}"
 IDE_DIR="$(realpath "$IDE_DIR")"
 PLUGIN_ZIP="$(realpath "$PLUGIN_ZIP")"
+PRODUCT_CODE="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["productCode"])' "$IDE_DIR/product-info.json")"
+case "$PRODUCT_CODE" in
+  WS) IDE_LAUNCHER=webstorm ;;
+  IU|IC) IDE_LAUNCHER=idea ;;
+  *) echo "Unsupported harness IDE product: $PRODUCT_CODE" >&2; exit 1 ;;
+esac
 TEST=p
 H="$(mktemp -d "${TMPDIR:-/tmp}/zoo-solheim-e2e.XXXXXXXX")"
 echo "Disposable harness and evidence: $H"
@@ -20,6 +28,13 @@ DEADLINE="${DEADLINE_SECONDS:-780}"
 
 rm -rf "$CFG" "$EV"
 mkdir -p "$CFG/config" "$CFG/system" "$CFG/log" "$CFG/plugins" "$EV" "$H/props"
+if [ -n "${HARNESS_LICENSE_FILE:-}" ]; then
+  [ "$PRODUCT_CODE" = WS ] || { echo 'HARNESS_LICENSE_FILE currently supports WebStorm only' >&2; exit 1; }
+  # Reuse a legitimately activated local license/trial in a fresh test profile.
+  # The profile is private; license contents are never copied into evidence.
+  chmod 700 "$CFG/config"
+  install -m 600 -- "$HARNESS_LICENSE_FILE" "$CFG/config/webstorm.key" || exit 1
+fi
 
 XVFB_NUM=$((300 + RANDOM % 500))
 Xvfb ":$XVFB_NUM" -screen 0 1600x1000x24 -nolisten tcp > "$EV/xvfb.log" 2>&1 &
@@ -63,8 +78,19 @@ EOF
     echo "-XX:ActiveProcessorCount=$HARNESS_CPU_COUNT"
   fi
   echo "-Didea.trust.all.projects=true"
+  echo "-Didea.initially.ask.config=false"
+  echo "-Djb.consents.confirmation.enabled=false"
+  echo '-Djb.privacy.policy.text=<!--999.999-->'
   echo "-Dide.show.tips.on.startup.default.value=false"
+  # Containers often share a 64 MiB /dev/shm with other browsers. Let Chromium
+  # back its buffers with temporary files instead of exhausting that mount.
+  echo "-Dide.browser.jcef.extra.args=--disable-dev-shm-usage"
   echo "-Dzoo.harness.mode=${TEST^^}"
+  echo "-Dzoo.harness.fixture=${HARNESS_FIXTURE:-false}"
+  echo "-Dzoo.harness.diffStress=${HARNESS_DIFF_STRESS:-false}"
+  if [ "${HARNESS_DIFF_STRESS:-false}" = true ]; then
+    echo "-Didea.log.debug.categories=#com.intellij.openapi.wm.impl.FocusManagerImpl,jb.focus.requests"
+  fi
   echo "-Dzoo.harness.evidence=$EV"
 } > "$H/props/vm-$TEST.vmoptions"
 
@@ -79,15 +105,21 @@ fi
 
 export IDEA_PROPERTIES="$H/props/idea-$TEST.properties"
 export IDEA_VM_OPTIONS="$H/props/vm-$TEST.vmoptions"
+if [ "$PRODUCT_CODE" = WS ]; then
+  export WEBIDE_PROPERTIES="$H/props/idea-$TEST.properties"
+  export WEBIDE_VM_OPTIONS="$H/props/vm-$TEST.vmoptions"
+fi
 
 click_startup_dialogs() {
   # The user-agreement dialog is borderless, ~600x460, centered on the
   # 1600x1000 Xvfb screen. It blocks frame creation before any in-IDE listener
   # runs, so dismiss it externally: select the confirm checkbox, then Continue.
   for _ in $(seq 1 30); do
-    for wid in $(xdotool search --onlyvisible . 2>/dev/null); do
+    [ -f "$EV/progress.log" ] && return
+    for wid in $(xdotool search --onlyvisible --name '(IntelliJ IDEA|WebStorm) User Agreement' 2>/dev/null); do
       geom=$(xdotool getwindowgeometry --shell "$wid" 2>/dev/null) || continue
       eval "$geom"
+      [ -f "$EV/progress.log" ] && return
       if [ "${WIDTH:-0}" -ge 550 ] && [ "${WIDTH:-0}" -le 700 ] && [ "${HEIGHT:-0}" -ge 400 ] && [ "${HEIGHT:-0}" -le 520 ]; then
         echo "harness: clicking startup agreement dialog wid=$wid ${WIDTH}x${HEIGHT}+${X}+${Y}"
         xdotool mousemove $((X + 40)) $((Y + HEIGHT * 85 / 100)) click 1
@@ -104,7 +136,7 @@ CLICKER_PID=$!
 
 (
   cd "$IDE_DIR/bin"
-  exec ./idea "$H/workspace/throwaway-project"
+  exec "./$IDE_LAUNCHER" "$H/workspace/throwaway-project"
 ) > "$EV/launcher-stdout.log" 2>&1 &
 IDE_PID=$!
 

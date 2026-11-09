@@ -46,11 +46,20 @@ public final class HarnessDriver implements AppLifecycleListener {
     private static final java.util.regex.Pattern FIXTURE_COMMAND = java.util.regex.Pattern.compile(
         "printf SOLHEIM_(FIRST|SECOND|THIRD)(; sleep [0-9]+)?(; cat src/Main\\.java)?");
     private long lastApprovedTs = -1;
+    private final java.util.Set<String> approvedCommands = new java.util.HashSet<>();
+    private final boolean fixtureMode = Boolean.getBoolean("zoo.harness.fixture");
+    private final boolean diffStress = Boolean.getBoolean("zoo.harness.diffStress");
+    private final boolean windowsLive = !fixtureMode && System.getProperty("os.name", "").startsWith("Windows");
+
+    private String windowsCommand(String step) {
+        return "powershell.exe -NoProfile -File .focus-ci/" + step + ".ps1";
+    }
 
     private final Object evidenceLock = new Object();
     private Path evidenceDir;
     private Path progressLog;
     private List<String> checks = new ArrayList<>();
+    private volatile boolean startupComplete;
 
     @Override
     public void appFrameCreated(List<String> commandLineArgs) {
@@ -92,6 +101,18 @@ public final class HarnessDriver implements AppLifecycleListener {
     private void run(Project project, String mode) {
         log("driver started, mode=" + mode);
         try {
+            if (diffStress) {
+                Path dir = Paths.get(project.getBasePath(), ".focus-diffs");
+                Files.createDirectories(dir);
+                for (int i=0; i<12; i++) {
+                    Files.writeString(dir.resolve("before-" + i + ".java"), "class Before" + i + " {}\n");
+                    Files.writeString(dir.resolve("after-" + i + ".java"), "class After" + i + " {}\n");
+                }
+                com.intellij.openapi.vfs.VirtualFile files = com.intellij.openapi.vfs.LocalFileSystem.getInstance()
+                    .refreshAndFindFileByIoFile(dir.toFile());
+                if (files == null) throw new IllegalStateException("Diff fixture directory unavailable");
+                files.refresh(false, true);
+            }
             record("jcefState", reflectJcefSupport());
             record("ideBuild", com.intellij.openapi.application.ApplicationInfo.getInstance().getBuild().asString());
             record("javaVersion", System.getProperty("java.version"));
@@ -134,9 +155,27 @@ public final class HarnessDriver implements AppLifecycleListener {
     private boolean addTitleHandler(Object jbCefBrowser, Object cefBrowser, AtomicReference<String> capturedTitle) {
         try {
             Object jbCefClient = invoke(jbCefBrowser, "getJBCefClient");
-            Class<?> handlerIfc = Class.forName("org.cef.handler.CefDisplayHandler");
+            // Newer IDEs isolate JCEF from this test plugin's class loader.
+            // Use the interface exposed by the running client's API so the proxy
+            // has the exact type identity required by addDisplayHandler.
+            Method register = null;
+            for (Method method : jbCefClient.getClass().getMethods()) {
+                Class<?>[] parameters = method.getParameterTypes();
+                if (method.getName().equals("addDisplayHandler") && parameters.length == 2 &&
+                        parameters[0].getName().equals("org.cef.handler.CefDisplayHandler")) {
+                    register = method;
+                    break;
+                }
+            }
+            if (register == null) throw new IllegalStateException("JCEF addDisplayHandler API unavailable");
+            Class<?> handlerIfc = register.getParameterTypes()[0];
             Object proxy = Proxy.newProxyInstance(handlerIfc.getClassLoader(), new Class<?>[]{handlerIfc},
                     (p, m, a) -> {
+                        if (m.getDeclaringClass() == Object.class) {
+                            if (m.getName().equals("hashCode")) return System.identityHashCode(p);
+                            if (m.getName().equals("equals")) return p == a[0];
+                            if (m.getName().equals("toString")) return "Zoo focus harness display handler";
+                        }
                         if ("onTitleChange".equals(m.getName()) && a.length >= 2 && a[1] instanceof String) {
                             capturedTitle.set((String) a[1]);
                             if (((String)a[1]).startsWith("ZFE2E:")) {
@@ -147,6 +186,10 @@ public final class HarnessDriver implements AppLifecycleListener {
                         }
                         if ("onConsoleMessage".equals(m.getName()) && a.length >= 4) {
                             String msg = String.valueOf(a[2]);
+                            if (msg.startsWith("ZFE2E:")) {
+                                JsonObject reply=JsonParser.parseString(msg.substring(6)).getAsJsonObject();
+                                realReplies.put(reply.get("snapshot").getAsInt(),reply);
+                            }
                             log("PAGE-CONSOLE " + a[1] + " " + msg);
                             if (msg.startsWith("ZFC:")) {
                                 consoleLines.add(msg);
@@ -164,17 +207,8 @@ public final class HarnessDriver implements AppLifecycleListener {
                         }
                         return null;
                     });
-            for (Method m : jbCefClient.getClass().getMethods()) {
-                if (m.getName().equals("addDisplayHandler")) {
-                    Class<?>[] pt = m.getParameterTypes();
-                    if (pt.length == 2 && pt[0].isAssignableFrom(handlerIfc)) {
-                        m.invoke(jbCefClient, proxy, cefBrowser);
-                        return true;
-                    }
-                }
-            }
-            LOG.warn("addDisplayHandler not found on " + jbCefClient.getClass());
-            return false;
+            register.invoke(jbCefClient, proxy, cefBrowser);
+            return true;
         } catch (Throwable t) {
             LOG.warn("title handler attach failed", t);
             return false;
@@ -214,11 +248,19 @@ public final class HarnessDriver implements AppLifecycleListener {
     // Manual provider-backed battery: real React textarea, real extension tools.
     private JsonObject realSnapshot(Object webview, AtomicReference<String> title) throws Exception {
         int id=++realSequence;
-        invoke(webview, "executeJavaScript", "document.title='ZFE2E:' + JSON.stringify((()=>{let e=[...document.querySelectorAll('textarea')].find(x=>x.offsetWidth&&x.offsetHeight);let r=e&&e.getBoundingClientRect();let z=window.__focusE2E||{};let m=z.messages||[];let last=m[m.length-1]||{};return {snapshot:"+id+",input:!!e,value:e?e.value:null,active:e===document.activeElement,disabled:e?e.disabled:null,rect:r?{x:r.x,y:r.y,w:r.width,h:r.height}:null,messages:m.length,events:z.events||0,partial:z.partial||0,lastAsk:last.ask||null,lastTs:last.ts||null,lastText:typeof last.text==='string'?last.text.slice(0,300):null,lastSay:last.say||null,lastPartial:!!last.partial,provider:z.provider||null,body:document.body.innerText.slice(-1200)};})());");
+        String script="(()=>{const snapshot=JSON.stringify((()=>{let e=[...document.querySelectorAll('textarea')].find(x=>x.offsetWidth&&x.offsetHeight);let r=e&&e.getBoundingClientRect();let z=window.__focusE2E||{};let m=z.messages||[];let last=m[m.length-1]||{};return {snapshot:"+id+",input:!!e,value:e?e.value:null,active:e===document.activeElement,windowFocused:document.hasFocus(),disabled:e?e.disabled:null,rect:r?{x:r.x,y:r.y,w:r.width,h:r.height}:null,messages:m.length,events:z.events||0,partial:z.partial||0,lastAsk:last.ask||null,lastTs:last.ts||null,lastText:typeof last.text==='string'?last.text.slice(0,300):null,lastSay:last.say||null,lastPartial:!!last.partial,provider:z.provider||null,body:document.body.innerText.slice(-1200)};})());console.log('ZFE2E:'+snapshot);document.title='ZFE2E:'+snapshot;})();";
+        runOnEdt(() -> invoke(webview, "executeJavaScript", script));
+        long resend=System.currentTimeMillis()+1000;
         long deadline=System.currentTimeMillis()+30000;
         while(System.currentTimeMillis()<deadline) {
             JsonObject reply=realReplies.remove(id);
             if(reply!=null)return reply;
+            if (System.currentTimeMillis() >= resend) {
+                // Observation only: no input or focus changes. A page title can
+                // be overwritten and JCEF may drop a queued evaluation.
+                runOnEdt(() -> invoke(webview, "executeJavaScript", script));
+                resend=System.currentTimeMillis()+1000;
+            }
             Thread.sleep(50);
         }
         throw new IllegalStateException("real DOM snapshot unavailable; pageLoaded="+invoke(webview,"isPageLoaded")+" disposed="+invoke(webview,"isDisposed"));
@@ -248,21 +290,51 @@ public final class HarnessDriver implements AppLifecycleListener {
         };
         runOnEdt(()->{com.intellij.ide.IdeEventQueue.getInstance().addPreprocessor(pre,project);com.intellij.ide.IdeEventQueue.getInstance().addPostprocessor(post,project);});
         Object manager = project.getService(zooClass("org.zoocode.jetbrains.webview.WebViewManager"));
-        Object webview = poll(120000, () -> invoke(manager, "getLatestWebView"));
-        poll(120000, () -> invoke(webview, "isPageLoaded"));
+        // Startup can replace a webview. Select the loaded, mounted browser after
+        // indexing rather than waiting forever on an instance that was retired.
+        Object webview = poll(180000, () -> {
+            Object candidate = invoke(manager, "getLatestWebView");
+            if (candidate == null || !Boolean.TRUE.equals(invoke(candidate, "isPageLoaded")) ||
+                    Boolean.TRUE.equals(invoke(candidate, "isDisposed")) ||
+                    com.intellij.openapi.project.DumbService.getInstance(project).isDumb()) return null;
+            final boolean[] showing = {false};
+            runOnEdt(() -> {
+                showing[0] = ((Component) invoke(field(candidate, "browser"), "getComponent")).isShowing();
+                for (Window window : Window.getWindows()) {
+                    if (!window.isShowing()) continue;
+                    String title = window instanceof Dialog ? ((Dialog) window).getTitle()
+                            : window instanceof Frame ? ((Frame) window).getTitle() : "";
+                    if ((window instanceof Dialog && ((Dialog) window).isModal()) || "Manage Licenses".equals(title)) {
+                        showing[0] = false;
+                    }
+                }
+            });
+            return showing[0] ? candidate : null;
+        });
+        if (webview == null) throw new IllegalStateException("No loaded, mounted chat browser after indexing");
+        startupComplete = true;
         Object browser = field(webview, "browser");
         AtomicReference<String> title = new AtomicReference<>();
-        addTitleHandler(browser, invoke(browser, "getCefBrowser"), title);
-        invoke(webview, "executeJavaScript", "window.__focusE2E={messages:[],events:0,partial:0};window.addEventListener('message',e=>{let d=e.data,z=window.__focusE2E;if(!d)return;z.events++;if(d.type==='state'&&d.state){if(d.state.clineMessages)z.messages=d.state.clineMessages;z.provider=d.state.apiConfiguration&&d.state.apiConfiguration.apiProvider;}if(d.type==='partialMessage'){z.partial++;if(d.partialMessage){let i=z.messages.findIndex(m=>m.ts===d.partialMessage.ts);if(i>=0)z.messages[i]=d.partialMessage;else z.messages.push(d.partialMessage);}}});");
+        if (!addTitleHandler(browser, invoke(browser, "getCefBrowser"), title)) {
+            throw new IllegalStateException("Cannot register JCEF snapshot handler; see IDE log for cause");
+        }
+        invoke(webview, "executeJavaScript", "window.__focusE2E={messages:[],events:0,partial:0};window.addEventListener('message',e=>{let d=e.data,z=window.__focusE2E;if(!d)return;z.events++;if(d.type==='state'&&d.state){if(d.state.clineMessages)z.messages=d.state.clineMessages.slice();z.provider=d.state.apiConfiguration&&d.state.apiConfiguration.apiProvider;}if(d.type==='messageUpdated'||d.type==='partialMessage'){let m=d.clineMessage||d.partialMessage;if(m){if(m.partial)z.partial++;let i=z.messages.findIndex(x=>x.ts===m.ts);if(i>=0)z.messages[i]=m;else z.messages.push(m);}}});");
         invoke(webview,"executeJavaScript","window.__focusNodeSeq=0;function e2eNode(e){if(!e)return null;if(!e.__e2eid)e.__e2eid=++window.__focusNodeSeq;return e.tagName+'@'+e.__e2eid;}for(let kind of ['keydown','input','focusin','focusout'])document.addEventListener(kind,e=>{if(kind==='keydown'&&!['x','y'].includes(e.key))return;console.info('E2EKEY:'+JSON.stringify({kind,ts:Date.now(),key:e.key||null,mod:e.ctrlKey||e.altKey||e.metaKey||false,node:e2eNode(e.target),active:e2eNode(document.activeElement),hasFocus:document.hasFocus(),length:typeof e.target.value==='string'?e.target.value.length:null}));},true);for(let kind of ['focus','blur'])window.addEventListener(kind,e=>console.info('E2EWINDOW:'+JSON.stringify({kind,ts:Date.now(),active:e2eNode(document.activeElement),hasFocus:document.hasFocus()})),true);");
         realSend(webview, "{\"type\":\"webviewDidLaunch\"}");
         realSend(webview, "{\"type\":\"mode\",\"text\":\"code\"}");
         Thread.sleep(1500);
         String configuration = "{\"type\":\"upsertApiConfiguration\",\"text\":\"focus-solheim\",\"apiConfiguration\":{\"apiProvider\":\"openai\",\"openAiBaseUrl\":\"http://127.0.0.1:19487/v1\",\"openAiApiKey\":\"LOCAL_TOKEN\",\"openAiModelId\":\"qwen3.8-27b\",\"openAiStrictToolSchemas\":false,\"openAiExtraBody\":\"{\\\"chat_template_kwargs\\\":{\\\"enable_thinking\\\":false}}\",\"openAiCustomModelInfo\":{\"contextWindow\":131072,\"maxTokens\":4096,\"supportsImages\":false,\"supportsPromptCache\":false,\"supportsNativeTools\":true,\"inputPrice\":0,\"outputPrice\":0}}}";
         JsonObject config = JsonParser.parseString(configuration).getAsJsonObject();
-        config.getAsJsonObject("apiConfiguration").addProperty("openAiApiKey", System.getenv("SOLHEIM_RELAY_TOKEN"));
+        JsonObject apiConfig = config.getAsJsonObject("apiConfiguration");
+        apiConfig.addProperty("openAiApiKey", fixtureMode ? "focus-fixture-local-only" : System.getenv("SOLHEIM_RELAY_TOKEN"));
+        if (fixtureMode) {
+            apiConfig.addProperty("openAiModelId", "focus-fixture");
+            apiConfig.remove("openAiExtraBody");
+        }
+        if (fixtureMode) config.addProperty("text", "focus-fixture");
         realSend(webview, config.toString());
         realSend(webview, "{\"type\":\"updateSettings\",\"updatedSettings\":{\"autoApprovalEnabled\":true,\"alwaysAllowReadOnly\":true,\"alwaysAllowWrite\":true,\"alwaysAllowExecute\":true,\"allowedCommands\":[\"printf\",\"sleep\",\"cat\",\"pwd\"],\"terminalShellIntegrationDisabled\":false,\"destructiveCommandGuardEnabled\":false,\"maxRequests\":20,\"telemetrySetting\":\"disabled\"}}");
+        if (!fixtureMode) realSend(webview, "{\"type\":\"updateSettings\",\"updatedSettings\":{\"alwaysAllowExecute\":false}}");
         realSend(webview, "{\"type\":\"didShowAnnouncement\"}");
         invoke(webview, "executeJavaScript", "[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Close')?.click();");
         JsonObject snap = null;
@@ -277,11 +349,44 @@ public final class HarnessDriver implements AppLifecycleListener {
             return showing[0] && !com.intellij.openapi.project.DumbService.getInstance(project).isDumb();
         });
         if (!Boolean.TRUE.equals(ready)) throw new IllegalStateException("Chat remained hidden during indexing");
+        snap = realSnapshot(webview,title);
         screenshot("p-configured");
-        clickInBrowser(browser, snap.getAsJsonObject("rect"));
+        // Establish native focus before typing anything. A freshly mounted OSR
+        // surface may paint after its DOM is ready. Setup clicks are bounded;
+        // no clicks or focus repairs occur inside either draft typing loop.
+        boolean initialFocus = false;
+        for (int attempt=1; attempt<=10; attempt++) {
+            snap=realSnapshot(webview,title);
+            clickInBrowser(browser, snap.getAsJsonObject("rect"));
+            Thread.sleep(500);
+            snap=realSnapshot(webview,title);
+            if (snap.get("active").getAsBoolean() && snap.get("windowFocused").getAsBoolean()) {
+                record("P_initialFocusClicks",attempt);
+                initialFocus=true;
+                break;
+            }
+        }
+        if (!initialFocus) { fail("nativeChatFocusUnavailable", "Setup clicks did not focus the mounted chat input"); return; }
+        {
+            typeText("smoke");
+            Thread.sleep(500);
+            JsonObject smoke = realSnapshot(webview, title);
+            record("P_nativeChatTypingSmoke", smoke);
+            if (!"smoke".equals(smoke.get("value").getAsString()) ||
+                    !smoke.get("active").getAsBoolean() || !smoke.get("windowFocused").getAsBoolean()) {
+                fail("nativeChatTypingUnavailable", "Native keys did not reach the focused React textarea");
+                return;
+            }
+            Robot clear = new Robot();
+            clear.keyPress(KeyEvent.VK_CONTROL); clear.keyPress(KeyEvent.VK_A);
+            clear.keyRelease(KeyEvent.VK_A); clear.keyRelease(KeyEvent.VK_CONTROL);
+            clear.keyPress(KeyEvent.VK_BACK_SPACE); clear.keyRelease(KeyEvent.VK_BACK_SPACE);
+            Thread.sleep(300);
+        }
         Toolkit.getDefaultToolkit().getSystemClipboard().setContents(
-            new java.awt.datatransfer.StringSelection("Use tools in this throwaway workspace: execute_command printf SOLHEIM_FIRST; sleep 5. Read src/Main.java, then apply_diff replacing throwaway with solheim_e2e. Execute printf SOLHEIM_SECOND; sleep 5; cat src/Main.java. No files outside this workspace. Briefly explain each step and finish with attempt_completion. Do not ask questions."),null);
+            new java.awt.datatransfer.StringSelection(fixtureMode ? "Stream the fixture response and finish with attempt_completion." : windowsLive ? "Use tools in this throwaway Windows workspace. Run execute_command with exactly: " + windowsCommand("first") + ". Read src/Main.java, then use apply_diff to replace throwaway with solheim_e2e. Run execute_command with exactly: " + windowsCommand("second") + ". Do not edit .focus-ci or files outside this workspace. Use only execute_command, read_file, apply_diff, and attempt_completion for this task. Do not create or update a todo list. Briefly explain each step and finish with attempt_completion. Do not ask questions." : "Use tools in this throwaway workspace: execute_command printf SOLHEIM_FIRST; sleep 5. Read src/Main.java, then apply_diff replacing throwaway with solheim_e2e. Execute printf SOLHEIM_SECOND; sleep 5; cat src/Main.java. No files outside this workspace. Use only execute_command, read_file, apply_diff, and attempt_completion for this task. Do not create or update a todo list. Briefly explain each step and finish with attempt_completion. Do not ask questions."),null);
         Robot robot = new Robot();
+        robot.setAutoDelay(90);
         robot.keyPress(KeyEvent.VK_CONTROL); robot.keyPress(KeyEvent.VK_V);
         robot.keyRelease(KeyEvent.VK_V); robot.keyRelease(KeyEvent.VK_CONTROL);
         Thread.sleep(1000);
@@ -294,43 +399,77 @@ public final class HarnessDriver implements AppLifecycleListener {
         if (snap.get("messages").getAsInt()==0) { record("P_afterSubmit",snap); fail("realTaskMissing","No task appeared after submitting prompt");return; }
         // Establish a single focus point before tools run; subsequent sampling never refocuses.
         clickInBrowser(browser,snap.getAsJsonObject("rect"));
+        record("P_beforeDraftTyping",realSnapshot(webview,title));
         String expected="";
         boolean typingHealthy=true;
+        boolean focusHealthy=true;
+        int initialPartial=snap.get("partial").getAsInt();
         boolean completed=false;
+        java.util.concurrent.Future<?> diffOpens = diffStress ? AppExecutorUtil.getAppExecutorService().submit(() -> {
+            try {
+                for (int i=0; i<12; i++) {
+                    openPreservingEditors(project, i);
+                    Thread.sleep(350);
+                }
+            } catch (Throwable e) {
+                StringWriter stack = new StringWriter();
+                e.printStackTrace(new PrintWriter(stack));
+                log("preserving editor sequence failed: " + stack);
+                throw new RuntimeException(e);
+            }
+        }) : null;
         int initialMessages=snap.get("messages").getAsInt();
         long deadline=System.currentTimeMillis()+240000;
         int sample=0;
         while(System.currentTimeMillis()<deadline) {
             typeText("x"); expected += "x";
-            Thread.sleep(2000);
+            Thread.sleep(diffOpens != null && !diffOpens.isDone() ? 200 : 2000);
             snap=realSnapshot(webview,title);
             boolean exact=expected.equals(snap.get("value").isJsonNull()?null:snap.get("value").getAsString());
             typingHealthy &= exact;
+            focusHealthy &= snap.get("active").getAsBoolean() && snap.get("windowFocused").getAsBoolean();
             record("P_sample_"+(sample++),snap);
             record("P_expected_"+sample,expected);
             record("P_owner_"+sample,swingFocusOwnerIdentity());
             if (!exact) record("P_typingLossAtSample",sample);
             String ask=snap.get("lastAsk").isJsonNull()?"":snap.get("lastAsk").getAsString();
-            String say=snap.get("lastSay").isJsonNull()?"":snap.get("lastSay").getAsString();
-            if (("completion_result".equals(ask)||"completion_result".equals(say)) && !snap.get("lastPartial").getAsBoolean()) {completed=true;break;}
+            if ("completion_result".equals(ask) && !snap.get("lastPartial").getAsBoolean() && sample>2) {completed=true;break;}
             if (!answerCommandAsk(webview, snap, ask)) return;
         }
         record("P_realTaskCompleted",completed);
+        if (diffOpens != null) {
+            diffOpens.get(60, TimeUnit.SECONDS);
+            record("P_preservingFilesCompleted",12);
+            record("P_preservingDiffsCompleted",12);
+        }
         boolean historyGrew = snap.get("messages").getAsInt()>initialMessages;
         record("P_realHistoryGrew",historyGrew);
         record("P_realTypingSurvived",typingHealthy);
         record("P_final",snap);
         boolean firstCompleted=completed;
+        boolean firstStreamed=snap.get("partial").getAsInt()>initialPartial;
+        record("P_firstTurnStreamedWhileTyping",firstStreamed);
+        boolean followupStreamed=false;
         if (completed) {
             mark("P-followup-user-turn");
-            Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new java.awt.datatransfer.StringSelection(
-                "Run printf SOLHEIM_THIRD; sleep 5 in this workspace and finish with attempt_completion. Do not change files."),null);
+            String followupPrompt = fixtureMode ? "Stream a second fixture response and finish with attempt_completion." : windowsLive ? "Run execute_command with exactly: " + windowsCommand("third") + ". Do not change any files. Finish with attempt_completion." : "Run printf SOLHEIM_THIRD; sleep 5 in this workspace and finish with attempt_completion. Do not change files.";
+            // A new user turn starts with a deliberate click. Never refocus inside
+            // either draft-preservation loop or repair a failed typing sample.
+            clickInBrowser(browser, snap.getAsJsonObject("rect"));
+            Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new java.awt.datatransfer.StringSelection(followupPrompt),null);
             robot.keyPress(KeyEvent.VK_CONTROL);robot.keyPress(KeyEvent.VK_A);robot.keyRelease(KeyEvent.VK_A);robot.keyRelease(KeyEvent.VK_CONTROL);
             robot.keyPress(KeyEvent.VK_CONTROL);robot.keyPress(KeyEvent.VK_V);robot.keyRelease(KeyEvent.VK_V);robot.keyRelease(KeyEvent.VK_CONTROL);
             Thread.sleep(800);
+            snap=realSnapshot(webview,title);
+            record("P_followupPromptEntered",snap);
+            if (!followupPrompt.equals(snap.get("value").isJsonNull()?null:snap.get("value").getAsString())) {
+                fail("followupPromptMismatch", "Native paste did not enter the requested followup; refusing to submit a draft");
+                return;
+            }
             robot.keyPress(KeyEvent.VK_ENTER);robot.keyRelease(KeyEvent.VK_ENTER);
             Thread.sleep(2000);
             expected="";completed=false;
+            initialPartial=realSnapshot(webview,title).get("partial").getAsInt();
             deadline=System.currentTimeMillis()+150000;
             int followup=0;
             while(System.currentTimeMillis()<deadline) {
@@ -338,19 +477,29 @@ public final class HarnessDriver implements AppLifecycleListener {
                 snap=realSnapshot(webview,title);
                 boolean exact=expected.equals(snap.get("value").isJsonNull()?null:snap.get("value").getAsString());
                 typingHealthy &= exact;
+                focusHealthy &= snap.get("active").getAsBoolean() && snap.get("windowFocused").getAsBoolean();
                 record("P_followup_"+(followup++),snap);
                 record("P_followupExpected_"+followup,expected);
                 String ask=snap.get("lastAsk").isJsonNull()?"":snap.get("lastAsk").getAsString();
                 if ("completion_result".equals(ask)&&!snap.get("lastPartial").getAsBoolean()&&followup>2) {completed=true;break;}
                 if (!answerCommandAsk(webview, snap, ask)) return;
             }
+            followupStreamed=snap.get("partial").getAsInt()>initialPartial;
         }
+        boolean commandsCovered = fixtureMode || (windowsLive
+                ? approvedCommands.containsAll(java.util.Arrays.asList(windowsCommand("first"), windowsCommand("second"), windowsCommand("third")))
+                : java.util.Arrays.asList("SOLHEIM_FIRST", "SOLHEIM_SECOND", "SOLHEIM_THIRD").stream()
+                    .allMatch(marker -> approvedCommands.stream().anyMatch(command -> command.contains(marker))));
+        record("P_requiredCommandsApproved",commandsCovered);
         record("P_followupCompleted",completed);
         record("P_bothTurnsTypingSurvived",typingHealthy);
-        boolean fixtureChanged = Files.readString(Paths.get(project.getBasePath(),"src/Main.java")).contains("solheim_e2e");
-        record("P_fixtureChanged",fixtureChanged);
+        record("P_bothTurnsFocusPreserved",focusHealthy);
+        record("P_followupStreamedWhileTyping",followupStreamed);
+        boolean fixtureChanged = fixtureMode || Files.readString(Paths.get(project.getBasePath(),"src/Main.java")).contains("solheim_e2e");
+        if (!fixtureMode) record("P_fixtureChanged",fixtureChanged);
+        record("providerMode",fixtureMode ? "local-streaming-fixture" : "live-solheim");
         screenshot("p-real-conversation");
-        finish("testP-real-solheim-conversation", firstCompleted&&completed&&typingHealthy&&historyGrew&&fixtureChanged?"PASS":"FAIL-REAL-CONVERSATION");
+        finish(fixtureMode ? "testP-streaming-fixture" : "testP-real-solheim-conversation", firstCompleted&&completed&&commandsCovered&&typingHealthy&&focusHealthy&&firstStreamed&&followupStreamed&&historyGrew&&fixtureChanged?"PASS":"FAIL-REAL-CONVERSATION");
     }
 
     private void clickInBrowser(Object jbCefBrowser, JsonObject rect) throws Exception {
@@ -369,7 +518,7 @@ public final class HarnessDriver implements AppLifecycleListener {
         if (loc[0] == null) {
             throw new IllegalStateException("browser component not showing");
         }
-        int cx = loc[0].x + rect.get("x").getAsInt() + rect.get("w").getAsInt() / 2;
+        int cx = loc[0].x + rect.get("x").getAsInt() + Math.min(20, rect.get("w").getAsInt() / 2);
         int cy = loc[0].y + rect.get("y").getAsInt() + rect.get("h").getAsInt() / 2;
         Robot robot = new Robot();
         robot.setAutoDelay(60);
@@ -391,6 +540,68 @@ public final class HarnessDriver implements AppLifecycleListener {
             robot.keyRelease(code);
         }
         log("typed text of length " + text.length());
+    }
+
+    // Exercise showTextDocument followed by diff, as used by live apply_diff.
+    // Both production calls run against fresh files while native keys go
+    // to the real chat. Reflection keeps Kotlin/IDE classes in their own loaders.
+    private void openPreservingEditors(Project project, int index) throws Exception {
+        Path dir = Paths.get(project.getBasePath(), ".focus-diffs");
+        Path left = dir.resolve("before-" + index + ".java");
+        Path right = dir.resolve("after-" + index + ".java");
+        Class<?> commandClass = zooClass("org.zoocode.jetbrains.editor.OpenEditorAPICommands");
+        Object command = commandClass.getConstructor(Project.class).newInstance(project);
+        Method method = java.util.Arrays.stream(commandClass.getMethods())
+            .filter(m -> m.getName().equals("workbench_diff")).findFirst().orElseThrow();
+        java.util.Map<String,Object> leftUri = java.util.Map.of("scheme","file","path",left.toString().replace('\\','/'));
+        java.util.Map<String,Object> rightUri = java.util.Map.of("scheme","file","path",right.toString().replace('\\','/'));
+        Class<?> textEditorsClass = zooClass("org.zoocode.jetbrains.actors.MainThreadTextEditors");
+        Object textEditors = textEditorsClass.getConstructor(Project.class).newInstance(project);
+        Method show = java.util.Arrays.stream(textEditorsClass.getMethods())
+            .filter(m -> m.getName().equals("tryShowTextDocument")).findFirst().orElseThrow();
+        invokeSuspend(textEditors, show, rightUri, java.util.Map.of("preserveFocus",true));
+        runOnEdt(() -> {
+            boolean opened = java.util.Arrays.stream(com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).getOpenFiles())
+                .anyMatch(file -> file.isInLocalFileSystem() && file.toNioPath().equals(right));
+            if (!opened) throw new IllegalStateException("Production call did not open file " + index);
+        });
+        log("preserving file completed: " + index);
+        invokeSuspend(command, method, leftUri, rightUri, "Input preservation " + index,
+            java.util.Map.of("preserveFocus",true));
+        runOnEdt(() -> {
+            boolean opened = false;
+            for (com.intellij.openapi.vfs.VirtualFile file : com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).getOpenFiles()) {
+                if (file.getClass().getName().equals("com.intellij.diff.editor.ChainDiffVirtualFile")) {
+                    Object chain = invoke(file, "getChain");
+                    for (Object request : (List<?>) invoke(chain, "getRequests")) {
+                        if (("Input preservation " + index).equals(invoke(request, "getName"))) opened = true;
+                    }
+                }
+            }
+            if (!opened) throw new IllegalStateException("Production command did not open diff " + index);
+        });
+        log("preserving diff completed: " + index);
+    }
+
+    private Object invokeSuspend(Object target, Method method, Object... arguments) throws Exception {
+        Class<?> continuationClass = method.getParameterTypes()[arguments.length];
+        ClassLoader loader = continuationClass.getClassLoader();
+        Object context = Class.forName("kotlin.coroutines.EmptyCoroutineContext", true, loader).getField("INSTANCE").get(null);
+        java.util.concurrent.CompletableFuture<Object> done = new java.util.concurrent.CompletableFuture<>();
+        Object continuation = Proxy.newProxyInstance(loader, new Class<?>[]{continuationClass}, (proxy, m, args) -> {
+            if (m.getName().equals("getContext")) return context;
+            if (m.getName().equals("resumeWith")) { done.complete(args[0]); return null; }
+            if (m.getName().equals("toString")) return "FocusEditorContinuation";
+            if (m.getName().equals("hashCode")) return System.identityHashCode(proxy);
+            if (m.getName().equals("equals")) return proxy == args[0];
+            return null;
+        });
+        Object[] parameters = java.util.Arrays.copyOf(arguments, arguments.length + 1);
+        parameters[arguments.length] = continuation;
+        Object result = method.invoke(target, parameters);
+        if (result != null && result.toString().equals("COROUTINE_SUSPENDED")) result = done.get(60, TimeUnit.SECONDS);
+        Class.forName("kotlin.ResultKt", true, loader).getMethod("throwOnFailure", Object.class).invoke(null, result);
+        return result;
     }
 
     private String swingFocusOwnerClass() {
@@ -416,8 +627,9 @@ public final class HarnessDriver implements AppLifecycleListener {
 
     private void dismissStartupDialogs(int seconds) {
         long deadline = System.currentTimeMillis() + seconds * 1000L;
-        while (System.currentTimeMillis() < deadline) {
+        while (!startupComplete && System.currentTimeMillis() < deadline) {
             runOnEdt(() -> {
+                if (startupComplete) return;
                 for (Window w : Window.getWindows()) {
                     if (!(w instanceof Dialog) || !w.isShowing() || (w instanceof JFrame)) {
                         continue;
@@ -434,6 +646,13 @@ public final class HarnessDriver implements AppLifecycleListener {
     }
 
     private void handleDialog(Dialog d) {
+        com.intellij.openapi.ui.DialogWrapper wrapper = com.intellij.openapi.ui.DialogWrapper.findInstance(d);
+        if (wrapper != null && (wrapper.getClass().getName().startsWith("com.intellij.llmInstaller.ui.promo") ||
+                containsAiPromotion(d))) {
+            log("Cancelling startup AI promotion: " + wrapper.getClass().getName());
+            wrapper.close(com.intellij.openapi.ui.DialogWrapper.CANCEL_EXIT_CODE);
+            return;
+        }
         List<JButton> buttons = new ArrayList<>();
         List<JCheckBox> boxes = new ArrayList<>();
         collect(d, buttons, boxes);
@@ -444,7 +663,7 @@ public final class HarnessDriver implements AppLifecycleListener {
                 log("dialog checkbox selected: " + box.getText());
             }
         }
-        String[] prefer = {"accept", "agree", "continue", "don't send", "dont send", "start", "skip", "no thanks", "got it", "close", "ok"};
+        String[] prefer = {"don't send", "dont send", "skip", "no thanks", "got it", "close", "ok", "accept", "agree", "continue"};
         for (String p : prefer) {
             for (JButton b : buttons) {
                 String t = (b.getText() == null ? "" : b.getText()).toLowerCase();
@@ -455,6 +674,21 @@ public final class HarnessDriver implements AppLifecycleListener {
                 }
             }
         }
+    }
+
+    private boolean containsAiPromotion(Component component) {
+        if (component.getClass().getName().startsWith("com.intellij.llmInstaller.ui.promo")) return true;
+        if (component instanceof JLabel) {
+            String text = ((JLabel) component).getText();
+            if (text != null && (text.contains("WebStorm Goes AI") ||
+                    text.contains("Unlock next-level development with free AI"))) return true;
+        }
+        if (component instanceof Container) {
+            for (Component child : ((Container) component).getComponents()) {
+                if (containsAiPromotion(child)) return true;
+            }
+        }
+        return false;
     }
 
     private void collect(Component c, List<JButton> buttons, List<JCheckBox> boxes) {
@@ -603,17 +837,27 @@ public final class HarnessDriver implements AppLifecycleListener {
      */
     private boolean answerCommandAsk(Object webview, JsonObject snap, String ask) throws Exception {
         if (snap.get("lastPartial").getAsBoolean()) return true;
+        if ("mistake_limit_reached".equals(ask)) {
+            fail("modelMistakeLimit", "Provider conversation stopped after repeated tool mistakes; required coverage is incomplete. "
+                    + snap.get("lastText").getAsString());
+            return false;
+        }
         if ("command".equals(ask)) {
             JsonElement text = snap.get("lastText");
             JsonElement tsValue = snap.get("lastTs");
             String command = text == null || text.isJsonNull() ? "" : text.getAsString().trim();
-            if (!FIXTURE_COMMAND.matcher(command).matches()) {
+            boolean allowed = windowsLive
+                    ? java.util.Arrays.asList(windowsCommand("first"), windowsCommand("second"), windowsCommand("third")).contains(command)
+                    : FIXTURE_COMMAND.matcher(command).matches();
+            if (!allowed) {
                 fail("unexpectedCommand", "Refused a command outside the fixture: " + command);
                 return false;
             }
             long ts = tsValue == null || tsValue.isJsonNull() ? -1 : tsValue.getAsLong();
             if (ts >= 0 && ts == lastApprovedTs) return true;
             lastApprovedTs = ts;
+            approvedCommands.add(command);
+            record("P_approvedCommand", command);
         } else if (!"command_output".equals(ask)) {
             return true;
         }
@@ -624,6 +868,7 @@ public final class HarnessDriver implements AppLifecycleListener {
     private void fail(String reason, String detail) {
         log("FAIL reason=" + reason + " detail=" + detail);
         record("failReason", reason + ": " + detail);
+        screenshot("failure");
         finish("test", "FAIL");
     }
 
