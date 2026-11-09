@@ -509,7 +509,7 @@ class TerminalInstance(
                     return@invokeLater
                 }
                 hideTerminalToolWindow()
-                shellWidget?.hide()
+                shellWidget?.isVisible = false
                 logger.info("✅ Terminal hidden: $extHostTerminalId")
             } catch (e: Exception) {
                 logger.error("❌ Failed to hide terminal: $extHostTerminalId", e)

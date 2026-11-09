@@ -4,7 +4,6 @@
 
 package org.zoocode.jetbrains.events
 
-import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 
 /**
@@ -60,21 +59,3 @@ object WorkspaceDirectoriesChangeEvent: EventType<WorkspaceFilesChangeData>
 data class WorkspaceFilesChangeData(
     val changes: List<WorkspaceFileChangeData>
 )
-
-
-/**
- * Workspace root change data class
- * @param project The changed project
- * @param oldPath Original workspace root path
- * @param newPath New workspace root path
- */
-data class WorkspaceRootChangeData(
-    val project: Project,
-    val oldPath: String?,
-    val newPath: String
-)
-
-/**
- * Workspace root change event
- */
-object WorkspaceRootChangeEvent : EventType<WorkspaceRootChangeData>
