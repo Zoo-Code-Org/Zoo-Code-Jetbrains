@@ -8,7 +8,7 @@ import org.junit.rules.TemporaryFolder
 import java.io.File
 
 class ExecutablePathTest {
-    @get:Rule val temporary = TemporaryFolder()
+    @get:Rule val temporary = TemporaryFolder(File(".").absoluteFile)
 
     private fun executable(directory: File, name: String): File = File(directory, name).apply {
         writeText("test executable")
@@ -44,11 +44,69 @@ class ExecutablePathTest {
         assertEquals(exe, findExecutableOnPath("node", directory.path, true))
     }
 
-    @Test fun `invalid names absent PATH and relative entries are rejected`() {
+    @Test fun `relative PATH entries cannot select an existing executable`() {
+        val directory = temporary.newFolder("relative-path")
+        val expected = executable(directory, "node.EXE")
+        val relative = File(".").canonicalFile.toPath()
+            .relativize(directory.canonicalFile.toPath()).toString()
+        assertFalse(File(relative).isAbsolute)
+        assertTrue(File(relative).isDirectory)
+        assertEquals(expected, findExecutableOnPath("node.EXE", directory.path, true, ".EXE"))
+        assertNull(findExecutableOnPath("node.EXE", relative, true, ".EXE"))
+    }
+
+    @Test fun `slash in executable name cannot escape the PATH directory`() {
+        val root = temporary.newFolder("traversal")
+        val sub = File(root, "sub").apply { mkdir() }
+        val expected = executable(root, "node.EXE")
+        assertEquals(expected, findExecutableOnPath("node.EXE", root.path, true, ".EXE"))
+        assertNull(findExecutableOnPath("../node.EXE", sub.path, true, ".EXE"))
+    }
+
+    @Test fun `backslash in executable name cannot select an existing file`() {
+        val directory = temporary.newFolder("backslash")
+        // Backslash is a directory separator on Windows and a literal filename on Unix.
+        val target = File(directory, "dir\\node.EXE")
+        target.parentFile.mkdirs()
+        executable(target.parentFile, target.name)
+        assertTrue(target.isFile && target.canExecute())
+        assertNull(findExecutableOnPath("dir\\node.EXE", directory.path, true, ".EXE"))
+    }
+
+    @Test fun `Windows PATH uses semicolons and skips missing directories`() {
+        val missing = File(temporary.root, "missing")
+        val directory = temporary.newFolder("second")
+        val expected = executable(directory, "node.EXE")
+        assertEquals(expected, findExecutableOnPath("node", "$missing;$directory", true, ".EXE"))
+    }
+
+    @Test fun `Windows malformed PATHEXT falls back or ignores entries without a dot`() {
+        val directory = temporary.newFolder("extensions")
+        val expected = executable(directory, "node.CMD")
+        executable(directory, "nodeEXE")
+        for (extensions in listOf(null, "", ";;", "EXE;.CMD")) {
+            assertEquals(extensions, expected, findExecutableOnPath("node", directory.path, true, extensions))
+        }
+    }
+
+    @Test fun `Windows default extensions keep their precedence`() {
+        val directory = temporary.newFolder("defaults")
+        val candidates = listOf(".COM", ".EXE", ".BAT", ".CMD")
+            .map { executable(directory, "node$it") }
+        for (expected in candidates) {
+            assertEquals(expected, findExecutableOnPath("node", directory.path, true))
+            assertTrue(expected.delete())
+        }
+    }
+
+    @Test fun `Windows explicit extension matching ignores case`() {
+        val directory = temporary.newFolder("case")
+        val expected = executable(directory, "node.exe")
+        assertEquals(expected, findExecutableOnPath("node.exe", directory.path, true, ".EXE"))
+    }
+
+    @Test fun `absent PATH and blank names are rejected`() {
         assertNull(findExecutableOnPath("node", null, false))
-        assertNull(findExecutableOnPath("", temporary.root.path, false))
-        assertNull(findExecutableOnPath("../node", temporary.root.path, false))
-        assertNull(findExecutableOnPath("dir\\node", temporary.root.path, true))
-        assertNull(findExecutableOnPath("node", ":.:relative", false))
+        assertNull(findExecutableOnPath("", temporary.root.path, true))
     }
 }

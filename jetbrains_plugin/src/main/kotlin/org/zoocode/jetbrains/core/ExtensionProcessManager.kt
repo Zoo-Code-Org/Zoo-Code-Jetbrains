@@ -384,12 +384,12 @@ class ExtensionProcessManager : Disposable {
      * Find executable in system path
      */
     private fun findExecutableInPath(name: String): String? {
-        val nodePath = findExecutableOnPath(
+        val executablePath = findExecutableOnPath(
             name, EnvironmentUtil.getValue("PATH"), SystemInfo.isWindows,
             EnvironmentUtil.getValue("PATHEXT")
         )?.absolutePath
-        LOG.info("System Node path: $nodePath")
-        return nodePath
+        LOG.info("System executable path for $name: $executablePath")
+        return executablePath
     }
     
     /**
