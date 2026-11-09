@@ -13,8 +13,8 @@ directly to `PLUGIN_ZIP` on Linux or `-PluginZip` on Windows. This exercises the
 released binary, including its bundled extension and runtime. Renaming an older
 ZIP or overriding only `pluginVersion` does not produce a 3.96.0 release test.
 
-To test the current Kotlin changes with extension 3.96.0, build from the repository
-root:
+On a new checkout, run `./scripts/setup.sh` first. To test the current Kotlin
+changes with extension 3.96.0, build from the repository root:
 
 ```sh
 ZOO_EXTENSION_VERSION=3.96.0 ./scripts/build.sh --mode release --clean --verbose

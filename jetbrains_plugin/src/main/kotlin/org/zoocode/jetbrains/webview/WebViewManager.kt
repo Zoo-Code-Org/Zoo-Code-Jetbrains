@@ -947,7 +947,7 @@ class WebViewInstance(
     }
 
     private fun setupJSBridge() {
-        // Create JS query object to handle messages from webview
+        // The cast selects the non-deprecated JBCefBrowserBase overload.
         jsQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
 
         // Set callback for receiving messages from webview

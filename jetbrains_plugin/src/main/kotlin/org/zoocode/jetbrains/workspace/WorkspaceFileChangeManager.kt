@@ -16,7 +16,6 @@ import org.zoocode.jetbrains.core.PluginContext
 import org.zoocode.jetbrains.core.ServiceProxyRegistry
 import org.zoocode.jetbrains.events.*
 import org.zoocode.jetbrains.ipc.proxy.interfaces.FileSystemEvents
-import java.util.concurrent.ConcurrentHashMap
 
 
 /**
@@ -27,27 +26,18 @@ import java.util.concurrent.ConcurrentHashMap
 class WorkspaceFileChangeManager(val project: Project) : Disposable {
     private val logger = Logger.getInstance(WorkspaceFileChangeManager::class.java)
 
-    // Record registered file listener connections
-    private val vfsConnections = ConcurrentHashMap<Project, MessageBusConnection>()
+    private var vfsConnection: MessageBusConnection? = null
     
     init {
-        // This service starts when this project's extension host is initialized.
-        // Each project owns its watcher; watching every open project here would
-        // duplicate events and retain other projects until this one is disposed.
+        // The extension host initializes this project's file watcher on startup.
         logger.info("Initialize workspace file change manager")
-        registerFileListener(project)
+        registerFileListener()
     }
 
     /**
      * Register file listener
-     * @param project Project to listen to
      */
-    private fun registerFileListener(project: Project) {
-        if (vfsConnections.containsKey(project)) {
-            logger.info("File listener for project ${project.name} already exists, skip registration")
-            return
-        }
-
+    private fun registerFileListener() {
         logger.info("Register file listener for project ${project.name}")
 
         try {
@@ -62,7 +52,7 @@ class WorkspaceFileChangeManager(val project: Project) : Disposable {
             })
 
             // Save connection for later cleanup
-            vfsConnections[project] = connection
+            vfsConnection = connection
 
         } catch (e: Exception) {
             logger.error("Failed to register file listener for project ${project.name}", e)
@@ -275,17 +265,9 @@ class WorkspaceFileChangeManager(val project: Project) : Disposable {
         logger.info("Release workspace file change manager resources")
 
         try {
-            // Release all file listener connections
-            vfsConnections.forEach { (project, connection) ->
-                try {
-                    logger.info("Unregister file listener for project ${project.name}")
-                    connection.disconnect()
-                } catch (e: Exception) {
-                    logger.error("Failed to unregister file listener for project ${project.name}", e)
-                }
-            }
-
-            vfsConnections.clear()
+            // Also support the explicit extension-host shutdown path.
+            vfsConnection?.disconnect()
+            vfsConnection = null
 
         } catch (e: Exception) {
             logger.error("Failed to release workspace file change manager resources", e)

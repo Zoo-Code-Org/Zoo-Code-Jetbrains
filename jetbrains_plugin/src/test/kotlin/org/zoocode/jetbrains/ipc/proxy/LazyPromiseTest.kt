@@ -7,8 +7,51 @@ import kotlinx.coroutines.runBlocking
 import org.zoocode.jetbrains.util.toCompletableFuture
 import org.junit.Assert.*
 import org.junit.Test
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.TimeUnit
 
 class LazyPromiseTest {
+    @Test
+    fun `failed reply rejects Java future with original error`() {
+        val promise = LazyPromise()
+        val future = promise.toCompletableFuture<String>()
+        val error = IllegalStateException("remote failure")
+
+        promise.resolveErr(error)
+
+        val actual = assertThrows(ExecutionException::class.java) {
+            future.get(1, TimeUnit.SECONDS)
+        }
+        assertSame(error, actual.cause)
+    }
+
+    @Test
+    fun `late Java future subscriber receives original failure`() {
+        val promise = LazyPromise()
+        val error = IllegalStateException("remote failure")
+        promise.resolveErr(error)
+
+        val future = promise.toCompletableFuture<String>()
+
+        val actual = assertThrows(ExecutionException::class.java) {
+            future.get(1, TimeUnit.SECONDS)
+        }
+        assertSame(error, actual.cause)
+    }
+
+    @Test
+    fun `cancelling promise cancels bridged Java future`() {
+        val promise = LazyPromise()
+        val future = promise.toCompletableFuture<String>()
+
+        promise.cancel()
+
+        assertTrue(future.isCancelled)
+        assertThrows(CancellationException::class.java) {
+            future.get(1, TimeUnit.SECONDS)
+        }
+    }
+
     @Test
     fun `completion callbacks still bridge replies to Java futures`() {
         val promise = LazyPromise()
@@ -24,6 +67,7 @@ class LazyPromiseTest {
     fun `reply wakes waiting caller and first completion wins`() = runBlocking {
         val promise = LazyPromise()
         val caller = async(start = CoroutineStart.UNDISPATCHED) { promise.await() }
+        assertFalse(promise.isCompleted)
         assertFalse(caller.isCompleted)
         promise.resolveOk("reply")
         promise.resolveErr(IllegalStateException("late failure"))
@@ -47,6 +91,7 @@ class LazyPromiseTest {
     @Test
     fun `cancelled promise completes and rejects awaiting callers`() = runBlocking {
         val promise = LazyPromise()
+        assertFalse(promise.isCompleted)
         promise.cancel()
         assertTrue(promise.isCompleted)
         try {
