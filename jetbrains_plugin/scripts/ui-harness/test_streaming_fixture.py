@@ -2,8 +2,8 @@ import http.client
 import json
 import tempfile
 import threading
-import time
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 from streaming_fixture import make_server
@@ -34,16 +34,34 @@ class StreamingFixtureTest(unittest.TestCase):
         request = {'stream': True, 'messages': [], 'tools': [
             {'type': 'function', 'function': {'name': 'attempt_completion'}}]}
         for turn in (1, 2):
-            started = time.monotonic()
-            response = self.post(request)
-            self.assertEqual(200, response.status)
-            self.assertEqual('text/event-stream', response.getheader('Content-Type'))
-            # Read a line before the server's delayed stream completes.
-            first = json.loads(response.readline().decode()[6:])
-            self.assertEqual('assistant', first['choices'][0]['delta']['role'])
-            events = [json.loads(line[6:]) for line in response.read().decode().splitlines()
-                      if line.startswith('data: {')]
-            self.assertGreaterEqual(time.monotonic() - started, 0.09)
+            paused = threading.Event()
+            release = threading.Event()
+
+            def pause_stream(_interval):
+                paused.set()
+                if not release.wait(5):
+                    raise TimeoutError('Test did not release the fixture stream')
+
+            # Hold the server after its first content chunk. Receiving both the
+            # role and content before release proves incremental delivery without
+            # depending on sleep durations or the host's clock resolution.
+            with patch('streaming_fixture.time.sleep', side_effect=pause_stream):
+                try:
+                    response = self.post(request)
+                    self.assertEqual(200, response.status)
+                    self.assertEqual('text/event-stream', response.getheader('Content-Type'))
+                    first = json.loads(response.readline().decode()[6:])
+                    self.assertEqual('assistant', first['choices'][0]['delta']['role'])
+                    self.assertEqual(b'\n', response.readline())
+                    update = json.loads(response.readline().decode()[6:])
+                    self.assertEqual(f'History update 1 for turn {turn}. ',
+                                     update['choices'][0]['delta']['content'])
+                    self.assertTrue(paused.wait(5), 'Server did not pause during the stream')
+                finally:
+                    # Also unblock the request handler if any assertion fails.
+                    release.set()
+                events = [update] + [json.loads(line[6:]) for line in response.read().decode().splitlines()
+                                     if line.startswith('data: {')]
             updates = [e for e in events if e['choices'][0]['delta'].get('content')]
             self.assertEqual(3, len(updates))
             tool = events[-2]['choices'][0]['delta']['tool_calls'][0]
