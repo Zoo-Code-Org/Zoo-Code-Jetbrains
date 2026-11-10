@@ -52,7 +52,7 @@ jobs:
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "21"
           cache: gradle
       - uses: actions/setup-node@v6
         with:
@@ -90,8 +90,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - ide: "2025.3"
-            sha256: "6f7234b57444371c3af02ab31a15f76dd1d6e5e32eaabc96722777a9addcd023"
+          - ide: "2026.1.5.1"
+            sha256: "997dcdaddde05e31d3428e4385fd178f720dfa6dbaebc4203b2ba27c0fca3153"
           - ide: "2026.2.1"
             sha256: "8aa16db629952300ab74d2d5e095150d1a534593e65bbbbd795b859759c00cbc"
     defaults:

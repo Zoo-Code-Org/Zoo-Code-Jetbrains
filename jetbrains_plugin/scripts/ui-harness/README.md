@@ -38,7 +38,7 @@ operations and needs the provider setup documented below. Gradle tests alone do
 not exercise the bundled extension in a running IDE.
 
 The Windows CI workflow pins extension 3.96.0 and builds the checkout;
-it has no input for an existing release ZIP. Its IDEA matrix is 2025.3 and
+it has no input for an existing release ZIP. Its IDEA matrix is 2026.1.5.1 and
 2026.2.1, so those jobs do not establish compatibility with IDEA 2023.3.8.
 Record the exact ZIP, IDE version, and evidence directory when comparing builds.
 

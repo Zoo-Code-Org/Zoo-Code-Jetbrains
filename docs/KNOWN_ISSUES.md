@@ -9,47 +9,42 @@ The additional reupload warnings are tracked in
 
 ### API migration and supported versions
 
-The plugin still targets IntelliJ 2023.3 and Java 17. Issue #18 removes the
-obsolete OS/PATH helpers, thread-ID logging, diff processor access, and focus
-settling callback. Diff tabs are closed through `FileEditorManager.closeFile`
-using the editor's public `filesToRefresh` list.
+The current release line targets IntelliJ Platform **261.27258.136 through
+263.*** (2026.1.5.1 through the 2026.3 branch), with Java 21. Older IDEs must use
+an earlier plugin release. The minimum was raised explicitly to remove the
+internal editor-opening dependency without maintaining separate release lines.
 
-The following migrations remain constrained by that baseline:
+Normal-file opens and preserving diff opens now use public `NavigationRequest`
+and `NavigationService` APIs with an explicit focus request. A negative offset
+preserves the caret and permits virtual diff files. The platform handles
+suspending editor loading internally; the plugin does not reference
+`FileEditorOpenOptions` or the internal `FileEditorManagerEx.openFile` overload.
+There is no reflective internal API fallback. Deliberate diff opens retain the
+diff helper path.
 
-- The preserving editor path uses the suspending internal API to avoid lost
-  chat keystrokes. Current upstream source offers an experimental public async
-  API with completion; 2023.3 has no `requestOpenFile`, and the pinned 2026.3
-  build exposes only a fire-and-forget `void requestOpenFile(VirtualFile)`.
-  The ordinary synchronous open is deprecated in current
-  IDEs as well. Replacing either requires a tested compatibility strategy;
-  switching back to synchronous loading would reintroduce the focus regression.
-- `ProxySettings` and `ShellExecOptionsCustomizer` are the upstream replacements
-  for `HttpConfigurable` and `LocalTerminalCustomizer`, but are absent from
-  2023.3. The legacy terminal runner hooks are also needed by the old SDK.
-- 2023.3 exposes only the varargs `FileSaverDescriptor` constructor; newer IDEs
-  deprecate that signature in favor of the two-argument constructor and extension
-  filters. A source-only constructor change cannot span both signatures.
+The build uses IntelliJ Platform Gradle Plugin 2.x and Java/Kotlin 21 toolchains.
+PR and release verification fail on internal API usages as well as binary
+compatibility problems. The supported range is bounded to `263.*` pending verification of later IDE branches.
 
-See JetBrains' [current editor API](https://github.com/JetBrains/intellij-community/blob/master/platform/analysis-api/src/com/intellij/openapi/fileEditor/FileEditorManager.kt),
-[proxy migration notices](https://github.com/JetBrains/intellij-community/blob/master/platform/platform-api/src/com/intellij/util/net/HttpConfigurable.java),
-[terminal customizer migration](https://github.com/JetBrains/intellij-community/blob/master/plugins/terminal/src/org/jetbrains/plugins/terminal/LocalTerminalCustomizer.java),
+The proxy settings and terminal customizer migrations in #18 remain separate
+unfinished work. Raising the baseline makes their modern replacements available;
+it does not itself eliminate those deprecations. The old process-based terminal
+runner overrides were removed in favor of the startup-options connector hook.
+
+See JetBrains' [public navigation API](https://github.com/JetBrains/intellij-community/blob/idea/261.27258.136/platform/platform-api/src/com/intellij/platform/ide/navigation/NavigationService.kt),
+[internal API migration guidance](https://plugins.jetbrains.com/docs/intellij/api-internal.html),
 and [multi-version guidance](https://plugins.jetbrains.com/docs/intellij/build-number-ranges.html#targeting-multiple-ide-versions).
-These findings remain open; no reflection or suppression removes the internal API dependency.
 
-PR and release CI run Plugin Verifier against 2023.3 and the pinned 2026.3 EAP,
-and retain separate reports plus the plugin ZIP's SHA-256. The verifier gate
-currently fails for binary compatibility problems and invalid plugins; warnings
-remain visible in the reports. Native typing, terminal, and diff tests remain
-required to validate runtime behavior, including the environment-approved live
-Solheim suite. The reupload's exact failing IDE/build and artifact checksum
-have not yet been supplied, so those CI targets do not reproduce that report by
-assumption.
-
-Local verification on 2026-11-09 used Plugin Verifier 1.410 and the same plugin
-ZIP for IC-233.11799.241 and IC-263.5701.42. Both reported compatible; the latter
-still reported 3 internal, 9 scheduled-for-removal, and 4 deprecated API usages.
-The focused JVM suites passed 116 tests with 6 skips, and the 2026.3 terminal
-dispatch smoke check passed. Native UI integration tests were not run locally.
+Historical verification on 2026-11-09 used the previous 2023.3-based ZIP with
+Plugin Verifier 1.410 against IC-233.11799.241 and IC-263.5701.42. Both reported
+compatible; the latter still reported 3 internal, 9 scheduled-for-removal, and
+4 deprecated usages. Those reports do not validate the current migration.
+Current validation is recorded in [the editor API migration report](validation/editor-api-migration.md).
+The final candidate reports zero internal usages on 2026.1.5.1, WebStorm
+2026.2.1 and the pinned 2026.3 build. Native IDEA typing/file/diff fixtures passed
+at both support boundaries. The local WebStorm desktop run is blocked by license
+activation; its issue-specific CI regression remains in place. Other API warnings
+and the extension-provider fixture failures are still open.
 
 ## 1. JCEF Related Issues
 

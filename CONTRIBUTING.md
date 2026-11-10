@@ -39,7 +39,7 @@ Before you begin, ensure you have the following installed:
 - **npm**: Version 8.0.0 or later (comes with Node.js)
 - **Git**: Any recent version
 - **JDK**: Version 17 or later (for JetBrains plugin development)
-- **JetBrains IDE**: IntelliJ IDEA 2023.1+ (for testing)
+- **JetBrains IDE**: IntelliJ IDEA 2026.1.5.1+ within the supported platform range (for testing)
 
 ### Optional Tools
 
@@ -100,7 +100,7 @@ cd jetbrains_plugin
 
 1. Open the project root directory in IntelliJ IDEA
 2. Import the Gradle project from `jetbrains_plugin/`
-3. Configure JDK 17+ in Project Settings
+3. Configure JDK 21 in Project Settings
 4. Install recommended plugins:
    - Kotlin
    - Gradle

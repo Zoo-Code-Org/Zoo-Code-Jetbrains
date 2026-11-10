@@ -70,16 +70,16 @@ Zoo Code supports JetBrains IDEs based on the IntelliJ Platform, including:
 - GoLand
 - DataGrip
 - Rider
-- Android Studio **2026.1.4 or newer** (currently available as a preview)
+- Android Studio builds meeting the platform range below, with JCEF
 
-The plugin targets IntelliJ Platform build **233** (JetBrains 2023.3) or newer. Android Studio requires version **2026.1.4 or newer** because that release includes the JCEF support required by Zoo Code. At present, Android Studio 2026.1.4 is available through the preview channel.
+The plugin targets IntelliJ Platform build **261.27258.136** (JetBrains 2026.1.5.1) through **263.***. Android Studio must also meet this platform build range and include JCEF; older Android Studio builds cannot install this release.
 
 ## Requirements
 
 ### Using the plugin
 
-- A supported JetBrains IDE based on IntelliJ Platform build 233 or newer
-- Android Studio 2026.1.4 or newer when using Android Studio; install a preview build until this version reaches the stable channel
+- A supported JetBrains IDE based on IntelliJ Platform build 261.27258.136 through 263.*
+- Android Studio must use IntelliJ Platform build 261.27258.136 through 263.* and include JCEF
 - A JCEF-enabled IDE runtime, which Zoo Code requires to render its interface
 
 Where JCEF support comes from depends on the IDE version. From IntelliJ Platform 2026.2 (build 262), JCEF ships as a separate bundled plugin. If that plugin is missing or disabled, Zoo Code shows a warning notification and the Zoo Code tool window cannot render. Enable the bundled JCEF plugin under **Settings → Plugins → Installed** and restart the IDE. On IDEs older than 2026.2, JCEF comes from the IDE runtime; see [Known Issues](docs/KNOWN_ISSUES.md).
@@ -89,7 +89,7 @@ On first launch the plugin automatically downloads a pinned, platform-specific N
 ### Building from source
 
 - Node.js 20.6.0 or newer and npm
-- JDK 17 or newer
+- JDK 21
 - Git
 - Bash
 - `curl` or `wget`

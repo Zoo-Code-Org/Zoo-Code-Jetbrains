@@ -157,11 +157,11 @@ jobs:
           fi
           echo "IDEA_263_SHA256=$digest" >> "$GITHUB_ENV"
 
-      - name: Set up Java 17
+      - name: Set up Java 21
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "21"
           cache: gradle
 
       - name: Set up Node.js
@@ -223,10 +223,9 @@ jobs:
           -PpluginVersion="$VERSION"
           --no-configuration-cache
 
-      # gradle-intellij 1.x resolves verification targets from release feeds only, so the
-      # 2026.3 EAP build is fetched from the IntelliJ snapshots repository, checked
-      # against the pinned SHA-256, cached, and handed to runPluginVerifier through
-      # -PverifierLocalIde. The build number lives in jetbrains_plugin/gradle.properties.
+      # The upper-bound verification SDK is downloaded once, checksum-checked,
+      # cached, and supplied through -PverifierLocalIde. Compilation still uses
+      # the minimum SDK configured in jetbrains_plugin/gradle.properties.
       - name: Restore the cached 2026.3 verification IDE
         id: idea263-cache
         uses: actions/cache@v4
@@ -257,17 +256,16 @@ jobs:
         working-directory: jetbrains_plugin
         run: sha256sum build/distributions/*.zip > build/plugin-sha256.txt
 
-      - name: Verify plugin compatibility with the oldest supported IDEA
+      - name: Verify plugin compatibility with the minimum IDEA 2026.1.5.1
         working-directory: jetbrains_plugin
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
         run: >
-          ./gradlew runPluginVerifier
+          ./gradlew verifyPlugin
           -PdebugMode=release
           -PvscodePlugin=zoo-code
           -PpluginVersion="$VERSION"
-          -PverifierIdeVersion=IC-2023.3
-          -PverifierReportsDir=build/reports/pluginVerifier/233
+          -PverifierReportsDir=build/reports/pluginVerifier/261
           --no-configuration-cache
 
       - name: Verify plugin compatibility with IDEA 2026.3
@@ -277,7 +275,7 @@ jobs:
         shell: bash
         run: |
           verifier_build="$(sed -n 's/^idea263Build=//p' gradle.properties)"
-          ./gradlew runPluginVerifier \
+          ./gradlew verifyPlugin \
             -PdebugMode=release \
             -PvscodePlugin=zoo-code \
             -PpluginVersion="$VERSION" \

@@ -12,7 +12,7 @@ class ExtensionIdentifier(val value: String) {
     /**
      * Stores lowercase value for comparison and indexing
      */
-    val _lower: String = value.toLowerCase()
+    val _lower: String = value.lowercase()
 
     companion object {
         /**
@@ -50,7 +50,7 @@ class ExtensionIdentifier(val value: String) {
             if (b == null) {
                 return false
             }
-            return a._lower == b.toLowerCase()
+            return a._lower == b.lowercase()
         }
 
         /**
@@ -69,7 +69,7 @@ class ExtensionIdentifier(val value: String) {
             if (b == null) {
                 return false
             }
-            return a.toLowerCase() == b._lower
+            return a.lowercase() == b._lower
         }
 
         /**
@@ -87,7 +87,7 @@ class ExtensionIdentifier(val value: String) {
          * @return Key for indexing
          */
         fun toKey(id: String): String {
-            return id.toLowerCase()
+            return id.lowercase()
         }
     }
 

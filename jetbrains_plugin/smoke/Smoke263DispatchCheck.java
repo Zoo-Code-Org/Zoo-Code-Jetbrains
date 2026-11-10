@@ -18,7 +18,7 @@ import java.util.jar.JarOutputStream;
 
 /**
  * Headless proof for the 2026.3 terminal compatibility, run by the
- * smoke263Dispatch Gradle task against an unpacked ideaIC 263.5701.42.
+ * smoke263Dispatch Gradle task against an unpacked ideaIC 263.7307.112.
  * It checks the facts that the Plugin Verifier cannot see:
  * <ul>
  *   <li>the platform entry point createTtyConnector(ShellStartupOptions) exists
@@ -57,7 +57,8 @@ public class Smoke263DispatchCheck {
     private static final List<String> BANNED_REF_PREFIXES = List.of(
         REMOVED_CREATE_PROCESS_PREFIX,
         "com/intellij/execution/process/LocalPtyOptions#",
-        "com/intellij/execution/process/LocalPtyOptions$Companion#");
+        "com/intellij/execution/process/LocalPtyOptions$Companion#",
+        "com/intellij/openapi/fileEditor/impl/FileEditorOpenOptions#");
     private static final String MULTIBYTE = "naive — 你好, τξζ, 🚀 smoke";
 
     private static final int ACC_PUBLIC = 0x0001;
@@ -69,13 +70,13 @@ public class Smoke263DispatchCheck {
     public static void main(String[] args) throws Exception {
         if (args.length == 1 && "--self-test".equals(args[0])) {
             selfTestBannedRefScanner();
-            System.out.println("[smoke-263] self-test OK: scanner rejects the banned LocalPtyOptions references and passes clean jars");
+            System.out.println("[smoke-263] self-test OK: scanner rejects internal PTY/editor references and passes clean jars");
             return;
         }
         if (args.length == 2 && "--scan-jar".equals(args[0])) {
             checkNoBannedRefs(Paths.get(args[1]));
             System.out.println("[smoke-263] scan OK: no packaged reference to "
-                + REMOVED_CREATE_PROCESS_PREFIX + "* or LocalPtyOptions*");
+                + REMOVED_CREATE_PROCESS_PREFIX + "*, LocalPtyOptions*, or FileEditorOpenOptions");
             return;
         }
         Path pluginJar = Paths.get(args[0]);
@@ -217,9 +218,9 @@ public class Smoke263DispatchCheck {
             throw new AssertionError(
                 "Packaged bytecode references banned platform API. LocalTerminalDirectRunner"
                     + ".createProcess does not resolve on IntelliJ 2026.3 (it returns "
-                    + "java.lang.Process there), and LocalPtyOptions is internal API:\n"
+                    + "java.lang.Process there); LocalPtyOptions and FileEditorOpenOptions are internal API:\n"
                     + String.join("\n", violations)
-                    + "\nStart the process through TerminalInstance.startTerminalProcess instead.");
+                    + "\nUse the public editor request API and the plugin's PTY startup implementation.");
         }
     }
 
@@ -239,6 +240,7 @@ public class Smoke263DispatchCheck {
                 "selftest/BannedRefs.class", syntheticClass("selftest/BannedRefs", new String[][]{
                     {"com/intellij/execution/process/LocalPtyOptions", "shouldUseWinConPty", "()Z"},
                     {"com/intellij/execution/process/LocalPtyOptions$Companion", "shouldUseWinConPty", "()Z"},
+                    {"com/intellij/openapi/fileEditor/impl/FileEditorOpenOptions", "withRequestFocus", "(Z)Lcom/intellij/openapi/fileEditor/impl/FileEditorOpenOptions;"},
                 })));
             AssertionError failure = null;
             try {
@@ -250,9 +252,10 @@ public class Smoke263DispatchCheck {
                 throw new AssertionError("self-test: scanner missed the LocalPtyOptions reference");
             }
             if (!failure.getMessage().contains("LocalPtyOptions#")
-                    || !failure.getMessage().contains("LocalPtyOptions$Companion")) {
+                    || !failure.getMessage().contains("LocalPtyOptions$Companion")
+                    || !failure.getMessage().contains("FileEditorOpenOptions#")) {
                 throw new AssertionError(
-                    "self-test: scanner report does not name both banned owners:\n" + failure.getMessage(),
+                    "self-test: scanner report does not name every banned owner:\n" + failure.getMessage(),
                     failure);
             }
 
@@ -261,6 +264,7 @@ public class Smoke263DispatchCheck {
                 "selftest/CleanRefs.class", syntheticClass("selftest/CleanRefs", new String[][]{
                     {"com/pty4j/PtyProcess", "getWinSize", "()Lcom/pty4j/WinSize;"},
                     {"com/intellij/execution/process/LocalPtyOptionsTest", "notInternal", "()V"},
+                    {"com/intellij/platform/ide/navigation/NavigationOptions", "requestFocus", "(Z)Lcom/intellij/platform/ide/navigation/NavigationOptions;"},
                 })));
             checkNoBannedRefs(clean);
         } finally {
