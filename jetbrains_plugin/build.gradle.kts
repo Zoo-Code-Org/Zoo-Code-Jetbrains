@@ -258,7 +258,7 @@ repositories {
 dependencies {
     intellijPlatform {
         val localIde = providers.gradleProperty("platformLocalIde").orNull
-        if (localIde != null) local(localIde)
+        if (localIde != null) local(file(localIde).absolutePath)
         else create {
             type.set(IntelliJPlatformType.entries.single { it.code == properties("platformType").get() })
             version = properties("platformVersion").get()
@@ -305,7 +305,9 @@ intellijPlatform {
         ))
         ides {
             val localIde = providers.gradleProperty("verifierLocalIde").orNull
-            if (localIde != null) local(localIde)
+            // The dependency helper otherwise resolves relative paths from the
+            // Gradle daemon's working directory, not this project directory.
+            if (localIde != null) local(file(localIde).absolutePath)
             else create {
                 type.set(IntelliJPlatformType.entries.single { it.code == properties("platformType").get() })
                 version = properties("platformVersion").get()

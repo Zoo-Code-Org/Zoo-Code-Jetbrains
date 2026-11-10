@@ -191,7 +191,7 @@ class EditorHolder(
             }
             CoroutineScope(Dispatchers.IO).launch {
                 delay(1000)
-                val file = File(document.uri.path).parentFile
+                val file = File(document.uri.fsPath).parentFile
                 if(file.exists()){
                     LocalFileSystem.getInstance().refreshIoFiles(listOf(file))
                 }

@@ -93,7 +93,9 @@ class URI private constructor(
                 }
             }
             
-            return URI("file", authority, normalizedPath, EMPTY, EMPTY)
+            // Use the validating/normalizing constructor, as parse/from do.
+            // IDE file events must identify the same document as open/edit/save RPCs.
+            return URI("file", authority, normalizedPath, EMPTY, EMPTY, strict = false)
         }
         
         /**
@@ -626,4 +628,4 @@ private fun encodeURIComponentMinimal(path: String, isPath: Boolean = false, isA
     }
     
     return result ?: path
-} 
+}
