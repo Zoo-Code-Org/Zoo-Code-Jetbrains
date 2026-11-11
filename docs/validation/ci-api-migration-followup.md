@@ -73,3 +73,49 @@ New release artifact validation (Plugin Verifier 1.410, Zoo Code 3.96.0):
 - Local reports: `jetbrains_plugin/build/reports/pluginVerifier/ci-uri-complete/`
   and `jetbrains_plugin/build/reports/pluginVerifier/ci-uri-complete-range/`.
 - This artifact has not had a new native desktop or live-provider run locally.
+
+## Solheim diff-open cancellation, 2026-11-11
+
+Run [42932385463](https://github.com/Zoo-Code-Org/Zoo-Code-Jetbrains/actions/runs/42932385463)
+at `45678ce5cb44dd39c4ed7440135cae707f1b24dc` passed PR checks and both IDEA
+desktop jobs. All three WebStorm live conversations passed the save, typing and
+focus predicates. The third failed the additional `preservingDiff` coverage
+check: `_workbench.diff` was cancelled during a concurrent normal-file open.
+This confirms the previous save fix while exposing a separate navigation race.
+
+Bytecode inspection of both IU-261.27258.136 and WS-262.9437.145 shows that
+`IdeNavigationService` uses an `OverflowSemaphore` with one permit and
+`DROP_OLDEST`: a newer navigation cancels the previous one. Current
+[JetBrains navigation source](https://github.com/JetBrains/intellij-community/blob/master/platform/lang-impl/src/com/intellij/platform/ide/navigation/impl/IdeNavigationService.kt)
+also coordinates competing navigation, but the supported binaries establish the
+behavior relevant here.
+
+`EditorAndDocManager` now shares one suspending `EditorOpenQueue` between normal
+file opens and preserving diff opens. Each navigation finishes before the next
+starts. Cancellation remains effective; there are no retries or synchronous
+fallbacks. Three queue regressions cover overlapping file/diff opens, cancelling
+a waiting caller, and cancelling an active caller. All 21 focused JVM tests pass,
+as do actionlint and diff whitespace checks. Queue tests run in Linux and Windows
+PR jobs. The native streaming fixture now overlaps a file open with every diff
+open and requires both production calls to complete.
+
+The WebStorm live job retains all three conversations and its diff-completion,
+save and focus assertions. A fresh approved CI run after pushing is required to
+confirm the fix on Windows WebStorm; no live provider calls were made locally.
+
+New release artifact: Zoo Code 3.96.0, SHA-256
+`4e5ff090d596c5bc0bdc10a2198f010bdafe2a0f80d288bd5552537cbcd22c91`.
+Plugin Verifier 1.410 reports zero internal usages on IU-261.27258.136,
+WS-262.9437.145 and IC-263.7307.112. The first two retain 7 scheduled-for-removal,
+7 deprecated and 6 experimental usages; 263 retains 7, 8 and 6 respectively.
+Reports are under `jetbrains_plugin/build/reports/pluginVerifier/diff-open-queue/`
+and `jetbrains_plugin/build/reports/pluginVerifier/diff-open-queue-range/`.
+
+Native deterministic fixture on IU-261.27258.136: PASS, all 12 overlapping
+file/diff sequences completed and both turns preserved exact typing and focus.
+Evidence: `/tmp/zoo-solheim-e2e.v01Ov2xL/evidence/p/evidence.json`.
+Native deterministic fixture on IU-263.7307.112: PASS with the same 12 overlapping
+sequences, exact typing and preserved focus through both turns. Evidence:
+`/tmp/zoo-solheim-e2e.AH65lm1P/evidence/p/evidence.json`. Both runs used bundled
+JBR 25.0.4.1. Evidence copies are retained under
+`jetbrains_plugin/build/reports/diff-open-queue/native/`.

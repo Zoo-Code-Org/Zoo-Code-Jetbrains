@@ -58,6 +58,7 @@ class EditorAndDocManager(val project: Project) : Disposable {
 
     private var job: Job? = null
     private val editorStateService:EditorStateService = EditorStateService(project)
+    private val editorOpenQueue = EditorOpenQueue()
 
     init {
         ideaEditorListener = object : FileEditorManagerListener {
@@ -214,12 +215,12 @@ class EditorAndDocManager(val project: Project) : Disposable {
     }
 
 
-    private suspend fun openFileAsync(file: VirtualFile, requestFocus: Boolean = false): Array<FileEditor> {
+    private suspend fun openFileAsync(file: VirtualFile, requestFocus: Boolean = false): Array<FileEditor> = editorOpenQueue.open {
         if (project.isDisposed) throw CancellationException("Project disposed before editor open")
         // NavigationService is public on the minimum SDK and opens files through
         // the platform's suspending editor path. A negative offset leaves the caret
         // unchanged and also supports the virtual files used for diff tabs.
-        return withContext(Dispatchers.Default) {
+        withContext(Dispatchers.Default) {
             // Avoid blocking service initialization after a suspending read action.
             // The platform must initialize the service in an active coroutine context.
             val navigationService = project.serviceAsync<NavigationService>()

@@ -128,6 +128,7 @@ jobs:
           --tests "org.zoocode.jetbrains.terminal.TerminalShellReadinessTest"
           --tests "org.zoocode.jetbrains.editor.EditorFocusIntentTest"
           --tests "org.zoocode.jetbrains.editor.WorkspaceEditTest"
+          --tests "org.zoocode.jetbrains.editor.EditorOpenQueueTest"
           --tests "org.zoocode.jetbrains.terminal.TerminalWidgetVisibilityTest"
           --tests "org.zoocode.jetbrains.ui.WebViewMountPlanTest"
           --tests "org.zoocode.jetbrains.util.FocusRequestEpochTest"
@@ -258,6 +259,7 @@ jobs:
             '--tests org.zoocode.jetbrains.terminal.TerminalShellReadinessTest'
             '--tests org.zoocode.jetbrains.terminal.WindowsConPtyProcessTest'
             '--tests org.zoocode.jetbrains.editor.WorkspaceEditTest'
+            '--tests org.zoocode.jetbrains.editor.EditorOpenQueueTest'
             '--tests org.zoocode.jetbrains.util.ExecutablePathTest'
             '--no-configuration-cache'
           )

@@ -566,8 +566,18 @@ public final class HarnessDriver implements AppLifecycleListener {
             if (!opened) throw new IllegalStateException("Production call did not open file " + index);
         });
         log("preserving file completed: " + index);
+        // Match the live extension: showing the edited file can overlap opening its diff.
+        // Both production calls must complete without NavigationService cancelling either.
+        java.util.concurrent.Future<?> fileOpen = AppExecutorUtil.getAppExecutorService().submit(() -> {
+            try {
+                invokeSuspend(textEditors, show, rightUri, java.util.Map.of("preserveFocus",true));
+            } catch (Exception e) {
+                throw new java.util.concurrent.CompletionException(e);
+            }
+        });
         invokeSuspend(command, method, leftUri, rightUri, "Input preservation " + index,
             java.util.Map.of("preserveFocus",true));
+        fileOpen.get(30, java.util.concurrent.TimeUnit.SECONDS);
         runOnEdt(() -> {
             boolean opened = false;
             for (com.intellij.openapi.vfs.VirtualFile file : com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).getOpenFiles()) {
