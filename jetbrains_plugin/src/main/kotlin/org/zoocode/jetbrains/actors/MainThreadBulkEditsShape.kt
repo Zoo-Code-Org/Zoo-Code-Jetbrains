@@ -57,8 +57,8 @@ class MainThreadBulkEdits(val project: Project) : MainThreadBulkEditsShape {
         // Process file edits - using background thread to avoid EDT violations
         cto.files.forEach { fileEdit ->
             if (fileEdit.oldResource != null && fileEdit.newResource != null) {
-                val oldResource = File(fileEdit.oldResource.path)
-                val newResource = File(fileEdit.newResource.path)
+                val oldResource = File(fileEdit.oldResource.fsPath)
+                val newResource = File(fileEdit.newResource.fsPath)
                 try {
                     Files.move(oldResource.toPath(), newResource.toPath())
                     // Move VFS refresh operations to background thread
@@ -72,7 +72,7 @@ class MainThreadBulkEdits(val project: Project) : MainThreadBulkEditsShape {
                     allSuccess = false
                 }
             } else if (fileEdit.oldResource != null) {
-                val oldResource = File(fileEdit.oldResource.path)
+                val oldResource = File(fileEdit.oldResource.fsPath)
                 try {
                     oldResource.delete()
                     // Move VFS refresh operations to background thread
@@ -86,7 +86,7 @@ class MainThreadBulkEdits(val project: Project) : MainThreadBulkEditsShape {
                     allSuccess = false
                 }
             } else if (fileEdit.newResource != null) {
-                val newResource = File(fileEdit.newResource.path)
+                val newResource = File(fileEdit.newResource.fsPath)
                 try {
                     val parentDir = newResource.parentFile
                     if (!parentDir.exists()) {

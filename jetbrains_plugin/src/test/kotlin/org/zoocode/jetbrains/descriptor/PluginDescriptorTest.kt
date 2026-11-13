@@ -71,6 +71,11 @@ class PluginDescriptorTest {
         val ids = dependsNodes().map { it.first }
         assertTrue("descriptor must depend on the platform module", ids.contains("com.intellij.modules.platform"))
         assertTrue("descriptor must depend on the terminal plugin", ids.contains("org.jetbrains.plugins.terminal"))
+        assertEquals(
+            "requirements must stay available outside Ultimate",
+            setOf("com.intellij.modules.platform", "org.jetbrains.plugins.terminal"),
+            dependsNodes().filter { it.second["optional"] != "true" }.map { it.first }.toSet()
+        )
         dependsNodes().forEach { (id, attributes) ->
             if (id != "com.intellij.modules.jcef") {
                 assertFalse("required dependency $id must not be optional", attributes["optional"] == "true")

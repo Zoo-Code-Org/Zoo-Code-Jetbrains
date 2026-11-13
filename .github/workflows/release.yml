@@ -261,11 +261,25 @@ jobs:
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
         run: >
-          ./gradlew verifyPlugin
+          ./gradlew verifyPlugin smoke263Dispatch
+          -PsmokeVerifiedIde=true
           -PdebugMode=release
           -PvscodePlugin=zoo-code
           -PpluginVersion="$VERSION"
           -PverifierReportsDir=build/reports/pluginVerifier/261
+          --no-configuration-cache
+
+      - name: Verify plugin compatibility with WebStorm 2026.2.1
+        working-directory: jetbrains_plugin
+        run: >
+          ./gradlew verifyPlugin smoke263Dispatch
+          -PsmokeVerifiedIde=true
+          -PdebugMode=release
+          -PvscodePlugin=zoo-code
+          -PpluginVersion="${{ needs.prepare.outputs.version }}"
+          -PverifierType=WS
+          -PverifierVersion=2026.2.1
+          -PverifierReportsDir=build/reports/pluginVerifier/262
           --no-configuration-cache
 
       - name: Verify plugin compatibility with IDEA 2026.3

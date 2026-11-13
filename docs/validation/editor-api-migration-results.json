@@ -1,58 +1,49 @@
 {
-  "date_utc": "2026-11-10",
+  "date_utc": "2026-11-12",
+  "scope": "follow-up candidate; commit-bound verification pending signing",
+  "base_commit": "32fb571f693f36d71b8585179e37cea132033476",
+  "production_source_manifest_sha256": "c672706f693e03007abefb5a169fb4fd0ff74cde56c476ad86809699d031ad9a",
   "plugin_version": "3.96.0",
   "artifact": "jetbrains_plugin/build/distributions/ZooCode-3.96.0.zip",
-  "sha256": "e121a635e78cd379669fe00bee5ae711579c2a5e39bf1ae53992ce62697c7852",
+  "sha256": "d4516add5b27bbbea5e60540d1725328b24b1f17e83e4b9828a23a9e26e5475a",
   "minimum_ide": "2026.1.5.1",
   "since_build": "261.27258.136",
   "until_build": "263.*",
   "bytecode_java_version": 21,
+  "maintainer_approved_baseline_change": "2026-11-12 review conversation",
   "verifier_version": "1.410",
-  "native_fixture_runs": [
-    {
-      "ide_build": "IU-261.27258.136",
-      "java_version": "25.0.4.1",
-      "status": "PASS",
-      "files_opened": 12,
-      "diffs_opened": 12,
-      "first_turn_characters": 23,
-      "followup_characters": 11,
-      "both_turns_typing_survived": true,
-      "evidence_path": "/tmp/zoo-solheim-e2e.9UqFhXuI/evidence/p/evidence.json",
-      "saved_evidence": "jetbrains_plugin/build/reports/editor-api-migration/native/IU-261.27258.136/evidence.json"
-    },
-    {
-      "ide_build": "IU-263.7307.112",
-      "java_version": "25.0.4.1",
-      "status": "PASS",
-      "files_opened": 12,
-      "diffs_opened": 12,
-      "first_turn_characters": 25,
-      "followup_characters": 11,
-      "both_turns_typing_survived": true,
-      "evidence_path": "/tmp/zoo-solheim-e2e.0hIz2OJL/evidence/p/evidence.json",
-      "saved_evidence": "jetbrains_plugin/build/reports/editor-api-migration/native/IU-263.7307.112/evidence.json"
-    }
-  ],
-  "webstorm_desktop": {
-    "ide": "WebStorm 2026.2.1",
-    "build": "WS-262.9437.145",
-    "status": "BLOCKED_LICENSE",
-    "reason": "Manage Licenses dialog in the isolated local test profile",
-    "ci_coverage": "Preserved Windows/WebStorm fixture and opt-in live Solheim workflow"
-  },
-  "live_solheim": "Not run locally; protected-environment approval remains required",
-  "focused_jvm_tests": {
-    "tests": 129,
+  "verifier_java": "Temurin 21.0.12",
+  "failing_marketplace_target": "IntelliJ IDEA 2026.1.5.1; 2026-11-09 09:56; verifier 1.410",
+  "original_uploaded_zip_sha256": null,
+  "jvm_tests": {
+    "tests": 137,
     "failures": 0,
     "errors": 0,
-    "skipped": 6
+    "skipped": 0
   },
-  "other_checks": {
-    "packaged_bytecode": "PASS",
-    "terminal_263_dispatch": "PASS",
-    "local_http_fixture_tests": "18 passed",
-    "workflow_actionlint": "PASS"
+  "jvm_suites": [
+    "org.zoocode.jetbrains.editor.EditorOpenQueueTest",
+    "org.zoocode.jetbrains.terminal.RawOutputTtyConnectorTest",
+    "org.zoocode.jetbrains.util.JcefSupportTest",
+    "org.zoocode.jetbrains.webview.InstanceRetirementTrackerTest",
+    "org.zoocode.jetbrains.descriptor.PluginDescriptorTest",
+    "org.zoocode.jetbrains.terminal.TerminalPtyBuilderTest",
+    "org.zoocode.jetbrains.ui.WebViewMountPlanTest",
+    "org.zoocode.jetbrains.editor.EditorFocusIntentTest",
+    "org.zoocode.jetbrains.terminal.TerminalShellReadinessTest",
+    "org.zoocode.jetbrains.util.FocusRequestEpochTest",
+    "org.zoocode.jetbrains.editor.EditorRoutingContractTest",
+    "org.zoocode.jetbrains.terminal.ShellIntegrationOutputStateTest",
+    "org.zoocode.jetbrains.ipc.proxy.LazyPromiseTest",
+    "org.zoocode.jetbrains.editor.WorkspaceEditTest",
+    "org.zoocode.jetbrains.util.TerminalCreationFocusGuardTest",
+    "org.zoocode.jetbrains.util.ExecutablePathTest",
+    "org.zoocode.jetbrains.util.ManualFocusGuardTest",
+    "org.zoocode.jetbrains.terminal.TerminalWidgetVisibilityTest"
+  ],
+  "mutation_checks": {
+    "bulk-fspath": "rejected by one regression test; restored source tests/build pass",
+    "timeout-error": "rejected by one regression test; restored source tests/build pass"
   },
   "verifier_results": [
     {
@@ -62,7 +53,8 @@
       "scheduled_for_removal": 7,
       "deprecated": 7,
       "experimental": 6,
-      "report": "jetbrains_plugin/build/reports/pluginVerifier/final/IU-261.27258.136"
+      "report": "verifier/IU-261.27258.136",
+      "dispatch_output_smoke": "PASS"
     },
     {
       "ide_build": "WS-262.9437.145",
@@ -71,7 +63,8 @@
       "scheduled_for_removal": 7,
       "deprecated": 7,
       "experimental": 6,
-      "report": "jetbrains_plugin/build/reports/pluginVerifier/final/WS-262.9437.145"
+      "report": "verifier/WS-262.9437.145",
+      "dispatch_output_smoke": "PASS"
     },
     {
       "ide_build": "IC-263.7307.112",
@@ -80,16 +73,65 @@
       "scheduled_for_removal": 7,
       "deprecated": 8,
       "experimental": 6,
-      "report": "jetbrains_plugin/build/reports/pluginVerifier/final/IC-263.7307.112"
+      "report": "verifier/IC-263.7307.112",
+      "dispatch_output_smoke": "PASS"
+    }
+  ],
+  "native_fixture_runs": [
+    {
+      "ide_build": "IU-261.27258.136",
+      "java_version": "25.0.4.1",
+      "status": "PASS",
+      "deliberate_file_focus_and_typing": "true",
+      "deliberate_diff_focus": "true",
+      "preserving_files": "12",
+      "preserving_diffs": "12",
+      "both_turns_typing": "true",
+      "both_turns_focus": "true",
+      "evidence": "native/261/evidence.json"
     },
     {
       "ide_build": "IU-263.7307.112",
-      "compatible": true,
-      "internal": 0,
-      "scheduled_for_removal": 7,
-      "deprecated": 8,
-      "experimental": 6,
-      "report": "jetbrains_plugin/build/reports/pluginVerifier/final/IU-263.7307.112"
+      "java_version": "25.0.4.1",
+      "status": "PASS",
+      "deliberate_file_focus_and_typing": "true",
+      "deliberate_diff_focus": "true",
+      "preserving_files": "12",
+      "preserving_diffs": "12",
+      "both_turns_typing": "true",
+      "both_turns_focus": "true",
+      "evidence": "native/263/evidence.json"
     }
-  ]
+  ],
+  "windows_hosted": "not rerun; existing fixture and protected WebStorm live jobs retained",
+  "live_provider": "not run; protected environment approval still applies",
+  "webstorm_native_local": "no fresh run; previous attempt blocked by license activation; retained CI coverage",
+  "remote_sdk_resolution": "Gradle dependency graph resolves com.jetbrains.intellij.idea:idea:2026.1.5.1; full remote build pending CI",
+  "embedded_extension_version": "3.84.0 (existing local cached payload)",
+  "artifact_scope": "Local release-mode package; final publication payload must be independently rebuilt and verified in CI",
+  "platform_payload": "Existing prepared payload; missing platform.zip reconstructed locally",
+  "other_checks": {
+    "local_http_fixture_tests": "18 passed",
+    "actionlint": "PASS",
+    "script_integration_dry_run": "PASS",
+    "packaged_bytecode_scanner_and_self_test": "PASS",
+    "git_diff_check": "PASS"
+  },
+  "evidence_archive": "editor-api-migration-evidence.tar.gz",
+  "evidence_paths": "All report, native, JVM and source-manifest paths are relative to the archive root.",
+  "source_commit": null,
+  "commit_checkpoint": "PENDING: configured GPG signing requires an unavailable passphrase",
+  "prior_mutation_checks": "historical/d6a4436e/mutation-*.log",
+  "ultimate_dependency_check": {
+    "required_dependencies": [
+      "com.intellij.modules.platform",
+      "org.jetbrains.plugins.terminal"
+    ],
+    "unused_java_build_dependency_removed": true,
+    "evidence": "product-dependencies.json",
+    "cross_product_checks": [
+      "WS-262.9437.145",
+      "IC-263.7307.112"
+    ]
+  }
 }

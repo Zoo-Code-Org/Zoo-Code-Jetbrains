@@ -260,11 +260,12 @@ dependencies {
         val localIde = providers.gradleProperty("platformLocalIde").orNull
         if (localIde != null) local(file(localIde).absolutePath)
         else create {
-            type.set(IntelliJPlatformType.entries.single { it.code == properties("platformType").get() })
+            val code = properties("platformType").get()
+            type.set(if (code == "IU") IntelliJPlatformType.IntellijIdea
+                else IntelliJPlatformType.entries.single { it.code == code })
             version = properties("platformVersion").get()
             useInstaller = false
         }
-        bundledPlugin("com.intellij.java")
         bundledPlugin("org.jetbrains.plugins.terminal")
         testFramework(TestFrameworkType.Platform)
         pluginVerifier("1.410")
@@ -309,8 +310,10 @@ intellijPlatform {
             // Gradle daemon's working directory, not this project directory.
             if (localIde != null) local(file(localIde).absolutePath)
             else create {
-                type.set(IntelliJPlatformType.entries.single { it.code == properties("platformType").get() })
-                version = properties("platformVersion").get()
+                val code = providers.gradleProperty("verifierType").orElse(properties("platformType")).get()
+                type.set(if (code == "IU") IntelliJPlatformType.IntellijIdea
+                    else IntelliJPlatformType.entries.single { it.code == code })
+                version = providers.gradleProperty("verifierVersion").orElse(properties("platformVersion")).get()
                 useInstaller = false
             }
         }
@@ -431,25 +434,31 @@ tasks {
     // build's jediterm and pty4j.
     register("smoke263Dispatch") {
         group = "verification"
-        description = "Prove the 2026.3 createTtyConnector dispatch against an unpacked ideaIC 263.7307.112"
+        description = "Prove createTtyConnector dispatch and output forwarding against the selected verification IDE"
         val checker = layout.projectDirectory.file("smoke/Smoke263DispatchCheck.java")
         val idea263Build = providers.gradleProperty("idea263Build").orElse("263.7307.112")
-        val ideDir = providers.gradleProperty("smokeLocalIde")
+        val verificationIde = providers.provider { verifyPlugin.get().ides.singleFile.absolutePath }
+        val ideDir = (if (providers.gradleProperty("smokeVerifiedIde").orNull == "true") {
+            dependsOn(verifyPlugin)
+            verificationIde
+        } else providers.gradleProperty("smokeLocalIde"))
             .orElse(layout.buildDirectory.dir(idea263Build.map { "ideaIC-$it" }).map { it.asFile.absolutePath })
         // The checker reads the first jar as bytes and loads the other five. Track only
         // this jar set so unrelated files in the unpacked IDE cannot invalidate the task.
-        val ideJarPaths = listOf(
+        val ideJarPaths = ideDir.map { directory -> listOf(
             "plugins/terminal/lib/terminal.jar",
-            "plugins/pty4j-plugin/lib/modules/intellij.libraries.pty4j.jar",
+            if (File(directory, "lib/intellij.libraries.pty4j.jar").isFile)
+                "lib/intellij.libraries.pty4j.jar"
+            else "plugins/pty4j-plugin/lib/modules/intellij.libraries.pty4j.jar",
             "lib/intellij.libraries.jediterm.core.jar",
             "lib/intellij.libraries.jediterm.ui.jar",
             "lib/util-8.jar",
             "lib/util_rt.jar",
-        )
+        ) }
         inputs.files(prepareSandbox.map { it.destinationDir })
         inputs.file(checker)
-        inputs.files(ideDir.map { ideDirectory -> ideJarPaths.map { File(ideDirectory, it) } })
-        inputs.property("idea263Build", idea263Build)
+        inputs.files(ideDir.zip(ideJarPaths) { directory, paths -> paths.map { File(directory, it) } })
+        inputs.property("selectedIde", ideDir)
         outputs.file(layout.buildDirectory.file("verification/smoke263-dispatch.ok"))
         dependsOn(prepareSandbox)
         doLast {
@@ -459,10 +468,10 @@ tasks {
                     "ideaIC-${idea263Build.get()}-EAP-SNAPSHOT.zip there or pass " +
                     "-PsmokeLocalIde=<directory>."
             }
-            val ideJars = ideJarPaths.map { ideDirectory.resolve(it) }
+            val ideJars = ideJarPaths.get().map { ideDirectory.resolve(it) }
             ideJars.forEach {
                 check(it.isFile) {
-                    "Expected 2026.3 IDE jar missing: $it. The ideaIC layout changed and the " +
+                    "Expected verification IDE jar missing: $it. The IDE layout changed and the " +
                         "smoke checker needs updated jar locations."
                 }
             }
@@ -485,7 +494,7 @@ tasks {
                 )
             }
             val smokeMarker = layout.buildDirectory.file("verification/smoke263-dispatch.ok").get().asFile
-            smokeMarker.writeText("${idea263Build.get()} ${pluginJar.absolutePath}")
+            smokeMarker.writeText("${ideDirectory.absolutePath} ${pluginJar.absolutePath}")
         }
     }
 

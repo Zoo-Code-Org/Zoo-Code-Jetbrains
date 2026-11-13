@@ -351,6 +351,7 @@ public final class HarnessDriver implements AppLifecycleListener {
         if (!Boolean.TRUE.equals(ready)) throw new IllegalStateException("Chat remained hidden during indexing");
         snap = realSnapshot(webview,title);
         screenshot("p-configured");
+        if (diffStress) checkDeliberateEditorFocus(project);
         // Establish native focus before typing anything. A freshly mounted OSR
         // surface may paint after its DOM is ready. Setup clicks are bounded;
         // no clicks or focus repairs occur inside either draft typing loop.
@@ -540,6 +541,59 @@ public final class HarnessDriver implements AppLifecycleListener {
             robot.keyRelease(code);
         }
         log("typed text of length " + text.length());
+    }
+
+    // Deliberate opens must transfer native focus; chat typing is checked again
+    // after the normal setup click below. Preserving opens run during both turns.
+    private void checkDeliberateEditorFocus(Project project) throws Exception {
+        Path dir = Paths.get(project.getBasePath(), ".focus-diffs");
+        java.util.Map<String,Object> right = java.util.Map.of("scheme", "file", "path",
+            dir.resolve("after-0.java").toString().replace('\\', '/'));
+        java.util.Map<String,Object> left = java.util.Map.of("scheme", "file", "path",
+            dir.resolve("before-0.java").toString().replace('\\', '/'));
+        Class<?> textClass = zooClass("org.zoocode.jetbrains.actors.MainThreadTextEditors");
+        Object textEditors = textClass.getConstructor(Project.class).newInstance(project);
+        Method show = java.util.Arrays.stream(textClass.getMethods())
+            .filter(m -> m.getName().equals("tryShowTextDocument")).findFirst().orElseThrow();
+        invokeSuspend(textEditors, show, right, java.util.Map.of("preserveFocus", false));
+        awaitSelectedEditorFocus(project);
+        final String[] before = {null};
+        runOnEdt(() -> before[0] = com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project)
+            .getSelectedTextEditor().getDocument().getText());
+        typeText("q");
+        Object typed = poll(10000, () -> {
+            final boolean[] exact = {false};
+            runOnEdt(() -> {
+                String after = com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project)
+                    .getSelectedTextEditor().getDocument().getText();
+                exact[0] = after.equals("q" + before[0]);
+            });
+            return exact[0];
+        });
+        if (!Boolean.TRUE.equals(typed)) throw new IllegalStateException("Deliberate file open lost native typing");
+        record("P_deliberateFileFocusAndTyping", true);
+        Class<?> commandClass = zooClass("org.zoocode.jetbrains.editor.OpenEditorAPICommands");
+        Object command = commandClass.getConstructor(Project.class).newInstance(project);
+        Method diff = java.util.Arrays.stream(commandClass.getMethods())
+            .filter(m -> m.getName().equals("workbench_diff")).findFirst().orElseThrow();
+        invokeSuspend(command, diff, left, right, "Deliberate focus regression", java.util.Map.of("preserveFocus", false));
+        awaitSelectedEditorFocus(project);
+        record("P_deliberateDiffFocus", true);
+    }
+
+    private void awaitSelectedEditorFocus(Project project) throws Exception {
+        Object focused = poll(10000, () -> {
+            final boolean[] owned = {false};
+            runOnEdt(() -> {
+                Component owner = KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
+                for (com.intellij.openapi.fileEditor.FileEditor editor :
+                        com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).getSelectedEditors()) {
+                    owned[0] |= owner != null && javax.swing.SwingUtilities.isDescendingFrom(owner, editor.getComponent());
+                }
+            });
+            return owned[0];
+        });
+        if (!Boolean.TRUE.equals(focused)) throw new IllegalStateException("Deliberate open did not focus its editor");
     }
 
     // Exercise showTextDocument followed by diff, as used by live apply_diff.

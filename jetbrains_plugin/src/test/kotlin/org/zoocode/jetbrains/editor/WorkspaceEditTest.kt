@@ -9,7 +9,7 @@ class WorkspaceEditTest {
     @Test
     fun `IDE file events and RPC edits share one document identity`() {
         val ideResource = URI.file("C:/workspace/Main.java")
-        val rpcResource = createURI(mapOf("scheme" to "file", "path" to "C:/workspace/Main.java"))
+        val rpcResource = WorkspaceEdit.from("""{"edits":[{"resource":{"scheme":"file","path":"C:/workspace/Main.java"},"textEdit":{"range":{"startLineNumber":1,"startColumn":1,"endLineNumber":1,"endColumn":10},"text":"solheim_e2e"}}]}""").texts.single().resource
         val documents = hashMapOf(ideResource to false)
         documents[rpcResource] = true
         assertEquals("An edit must update the original document rather than add a second one", 1, documents.size)
@@ -21,7 +21,7 @@ class WorkspaceEditTest {
     @Test
     fun `editing an IDE document sends a dirty change rather than a second document`() {
         val ideResource = URI.file("C:/workspace/Main.java")
-        val rpcResource = createURI(mapOf("scheme" to "file", "path" to "C:/workspace/Main.java"))
+        val rpcResource = WorkspaceEdit.from("""{"edits":[{"resource":{"scheme":"file","path":"C:/workspace/Main.java"},"textEdit":{"range":{"startLineNumber":1,"startColumn":1,"endLineNumber":1,"endColumn":10},"text":"solheim_e2e"}}]}""").texts.single().resource
         val original = ModelAddedData(ideResource, 1, listOf("throwaway"), "\n", "java", false, "utf8")
         val previous = DocumentsAndEditorsState(documents = hashMapOf(ideResource to original))
         val current = DocumentsAndEditorsState(documents = hashMapOf(ideResource to original))
@@ -44,6 +44,42 @@ class WorkspaceEditTest {
         assertDocumentIdentity("/C:/workspace/Main.java", "/C:/workspace/Main.java")
         assertDocumentIdentity("/workspace/Main.java", "/workspace/Main.java")
         assertDocumentIdentity("/share/Main.java", "/share/Main.java", "server")
+    }
+
+    @Test
+    fun `file edits normalize both rename resources and preserve options`() {
+        fun resource(path: String) = mapOf("scheme" to "file", "path" to path)
+        val edits = listOf(
+            mapOf("fileEdit" to true, "newResource" to resource("C:/workspace/new.txt")),
+            mapOf("fileEdit" to true, "oldResource" to resource("C:/workspace/old.txt")),
+            mapOf("fileEdit" to true, "oldResource" to resource("C:/workspace/old.txt"),
+                "newResource" to resource("C:/workspace/new.txt"),
+                "options" to mapOf("overwrite" to true, "copy" to true, "contents" to "aGVsbG8="),
+                "metadata" to mapOf("isRefactoring" to true))
+        )
+        val result = WorkspaceEdit.from(Gson().toJson(mapOf("edits" to edits)))
+        assertEquals(0, result.texts.size)
+        assertEquals(3, result.files.size)
+        assertEquals(null, result.files[0].oldResource)
+        assertEquals(URI.file("C:/workspace/new.txt"), result.files[0].newResource)
+        assertEquals(URI.file("C:/workspace/old.txt"), result.files[1].oldResource)
+        assertEquals(null, result.files[1].newResource)
+        val rename = result.files[2]
+        assertEquals(URI.file("C:/workspace/old.txt"), rename.oldResource)
+        assertEquals(URI.file("C:/workspace/new.txt"), rename.newResource)
+        assertEquals(true, rename.options?.overwrite)
+        assertEquals(true, rename.options?.copy)
+        assertEquals("aGVsbG8=", rename.options?.contents)
+        assertEquals(true, rename.metadata?.isRefactoring)
+    }
+
+    @Test
+    fun `filesystem paths decode drive UNC and escaped characters`() {
+        val windows = System.getProperty("os.name").lowercase().contains("windows")
+        fun separators(path: String) = if (windows) path.replace('/', '\\') else path
+        assertEquals(separators("c:/workspace/a b.txt"), URI.parse("file:///C:/workspace/a%20b.txt").fsPath)
+        assertEquals(separators("//server/share/a b.txt"), URI.parse("file://server/share/a%20b.txt").fsPath)
+        assertEquals(separators("/workspace/a b.txt"), URI.parse("file:///workspace/a%20b.txt").fsPath)
     }
 
     private fun assertDocumentIdentity(editPath: String, savePath: String, authority: String = "") {

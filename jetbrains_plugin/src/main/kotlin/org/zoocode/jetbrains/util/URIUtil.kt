@@ -93,7 +93,7 @@ class URI private constructor(
                 }
             }
             
-            // Use the validating/normalizing constructor, as parse/from do.
+            // Use the non-strict normalizing constructor, as parse/from do.
             // IDE file events must identify the same document as open/edit/save RPCs.
             return URI("file", authority, normalizedPath, EMPTY, EMPTY, strict = false)
         }

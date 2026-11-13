@@ -238,7 +238,7 @@ class TerminalInstance(
 
     /**
      * Start our local PTY through the supported startup-options connector hook.
-     * The minimum SDK supplies this hook; legacy process-based overrides are
+     * The 261–263 dispatch smoke checks bind this hook; process-based overrides are
      * unnecessary. WSL, dev-container and RemDev terminal support is not claimed.
      */
     private fun createCustomRunner(): LocalTerminalDirectRunner {
@@ -299,7 +299,7 @@ class TerminalInstance(
      *
      * UTF-8 matches the platform connector on every supported build:
      * LocalTerminalDirectRunner assigns myDefaultCharset = StandardCharsets.UTF_8
-     * and passes it to PtyProcessTtyConnector (intellij-community branch 233) and
+     * and passes it to PtyProcessTtyConnector (platform implementation) and
      * to LocalTerminalTtyConnector (2026.3), so the raw bytes decode the same way
      * the stock terminal would.
      */

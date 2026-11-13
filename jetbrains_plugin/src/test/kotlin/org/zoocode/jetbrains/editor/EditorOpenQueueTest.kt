@@ -62,4 +62,32 @@ class EditorOpenQueueTest {
         active.cancelAndJoin()
         assertEquals("opened", next.await())
     }
+    @Test(timeout = 5000)
+    fun `timed out navigation releases the queue`() = runBlocking {
+        val queue = EditorOpenQueue(navigationTimeoutMillis = 50)
+        val started = CompletableDeferred<Unit>()
+        val active = async(start = CoroutineStart.UNDISPATCHED) {
+            try {
+                queue.open { started.complete(Unit); awaitCancellation() }
+                false
+            } catch (_: EditorNavigationTimeoutException) {
+                true
+            }
+        }
+        started.await()
+        val next = async(start = CoroutineStart.UNDISPATCHED) { queue.open { "opened" } }
+        assertTrue(active.await())
+        assertEquals("opened", next.await())
+    }
+
+    @Test(timeout = 5000)
+    fun `nested timeout remains cancellation rather than a queue deadline error`() = runBlocking {
+        val queue = EditorOpenQueue(navigationTimeoutMillis = 2000)
+        try {
+            queue.open { kotlinx.coroutines.withTimeout(25) { awaitCancellation() } }
+            fail("Nested timeout must propagate")
+        } catch (_: kotlinx.coroutines.TimeoutCancellationException) {
+            assertEquals("opened", queue.open { "opened" })
+        }
+    }
 }

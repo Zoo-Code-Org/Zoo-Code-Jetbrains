@@ -129,6 +129,7 @@ jobs:
           --tests "org.zoocode.jetbrains.editor.EditorFocusIntentTest"
           --tests "org.zoocode.jetbrains.editor.WorkspaceEditTest"
           --tests "org.zoocode.jetbrains.editor.EditorOpenQueueTest"
+          --tests "org.zoocode.jetbrains.editor.EditorRoutingContractTest"
           --tests "org.zoocode.jetbrains.terminal.TerminalWidgetVisibilityTest"
           --tests "org.zoocode.jetbrains.ui.WebViewMountPlanTest"
           --tests "org.zoocode.jetbrains.util.FocusRequestEpochTest"
@@ -154,15 +155,27 @@ jobs:
       - name: Verify plugin compatibility with the minimum IDEA 2026.1.5.1
         working-directory: jetbrains_plugin
         run: >
-          ./gradlew verifyPlugin
+          ./gradlew verifyPlugin smoke263Dispatch
+          -PsmokeVerifiedIde=true
           -PverifierReportsDir=build/reports/pluginVerifier/261
+          --no-configuration-cache
+
+      - name: Verify plugin compatibility with WebStorm 2026.2.1
+        working-directory: jetbrains_plugin
+        run: >
+          ./gradlew verifyPlugin smoke263Dispatch
+          -PsmokeVerifiedIde=true
+          -PverifierType=WS
+          -PverifierVersion=2026.2.1
+          -PverifierReportsDir=build/reports/pluginVerifier/262
           --no-configuration-cache
 
       - name: Verify plugin compatibility with the exact IDEA 2026.3 build
         working-directory: jetbrains_plugin
         shell: bash
         run: >
-          ./gradlew verifyPlugin
+          ./gradlew verifyPlugin smoke263Dispatch
+          -PsmokeVerifiedIde=true
           -PverifierLocalIde="build/ideaIC-${IDEA_263_BUILD}"
           -PverifierReportsDir=build/reports/pluginVerifier/263
           --no-configuration-cache
@@ -260,6 +273,7 @@ jobs:
             '--tests org.zoocode.jetbrains.terminal.WindowsConPtyProcessTest'
             '--tests org.zoocode.jetbrains.editor.WorkspaceEditTest'
             '--tests org.zoocode.jetbrains.editor.EditorOpenQueueTest'
+            '--tests org.zoocode.jetbrains.editor.EditorRoutingContractTest'
             '--tests org.zoocode.jetbrains.util.ExecutablePathTest'
             '--no-configuration-cache'
           )

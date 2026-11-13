@@ -55,7 +55,11 @@ class WorkspaceEdit{
                         // especially Windows drive paths, so edits use the same document holder.
                         rst.texts.add(textEdit.copy(resource = URI.from(textEdit.resource)))
                     }else if(edit.has("fileEdit")){
-                        rst.files.add(Gson().fromJson(edit, FileEdit::class.java))
+                        val fileEdit = Gson().fromJson(edit, FileEdit::class.java)
+                        rst.files.add(fileEdit.copy(
+                            oldResource = fileEdit.oldResource?.let { URI.from(it) },
+                            newResource = fileEdit.newResource?.let { URI.from(it) },
+                        ))
                     }
                 }
                 return rst

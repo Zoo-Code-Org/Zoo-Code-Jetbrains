@@ -9,10 +9,12 @@ The additional reupload warnings are tracked in
 
 ### API migration and supported versions
 
-The current release line targets IntelliJ Platform **261.27258.136 through
+The current branch targets IntelliJ Platform **261.27258.136 through
 263.*** (2026.1.5.1 through the 2026.3 branch), with Java 21. Older IDEs must use
-an earlier plugin release. The minimum was raised explicitly to remove the
+an earlier plugin release. The maintainer approved raising the minimum on 2026-11-12 to remove the
 internal editor-opening dependency without maintaining separate release lines.
+The [compatibility decision](validation/editor-api-migration.md#supported-baseline-decision)
+records the released 233 API and version-specific build options considered.
 
 Normal-file opens and preserving diff opens now use public `NavigationRequest`
 and `NavigationService` APIs with an explicit focus request. A negative offset
@@ -39,7 +41,8 @@ Historical verification on 2026-11-09 used the previous 2023.3-based ZIP with
 Plugin Verifier 1.410 against IC-233.11799.241 and IC-263.5701.42. Both reported
 compatible; the latter still reported 3 internal, 9 scheduled-for-removal, and
 4 deprecated usages. Those reports do not validate the current migration.
-Current validation is recorded in [the editor API migration report](validation/editor-api-migration.md).
+Current validation and archived historical records are recorded in
+[the editor API migration report](validation/editor-api-migration.md).
 The final candidate reports zero internal usages on 2026.1.5.1, WebStorm
 2026.2.1 and the pinned 2026.3 build. Native IDEA typing/file/diff fixtures passed
 at both support boundaries. The local WebStorm desktop run is blocked by license

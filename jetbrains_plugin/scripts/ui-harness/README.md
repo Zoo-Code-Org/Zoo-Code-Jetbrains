@@ -303,3 +303,13 @@ loop. Exact draft and focus assertions are unchanged.
 The external Linux agreement helper only targets named IDE agreement windows
 and stops when the in-IDE driver starts. It no longer clicks arbitrary windows
 by size during a conversation.
+
+## Editor API review regression
+
+With `HARNESS_DIFF_STRESS=true`, the fixture first verifies that deliberate
+file opens transfer native focus and receive a typed character, and deliberate
+diff opens transfer focus. It then returns to chat through the normal setup
+click and runs the preserving file/diff sequence during streamed native typing.
+The overlap in the desktop fixture is stress coverage; deterministic ordering
+is asserted by `EditorOpenQueueTest`, and `EditorRoutingContractTest` checks
+the compiled production call sites actually enter that queue.

@@ -1,95 +1,127 @@
-# Public editor API migration
+# Editor API migration validation
 
-Date: 2026-11-10. Candidate plugin: **3.96.0**.
+Validated on **2026-11-12**, from staged production sources based on `32fb571`.
+**Commit-bound verification remains pending**: Git signing requires a passphrase
+unavailable in this session; no unsigned override or commit was made.
+The maintainer approved **261.27258.136–263.* / Java 21** as the supported range.
+The three reported internal editor API usages are removed. Issue #18 remains
+partial: proxy/customizer migrations and other API warnings remain open.
 
-The minimum IDE is **2026.1.5.1**, build **261.27258.136**; the upper bound is
-**263.***. Builds use Java 21, Gradle 9.2.1, Kotlin compiler 2.3.20 with
-language/API level 2.2, and IntelliJ Platform Gradle Plugin 2.20.0.
+## Supported baseline decision
 
-## Change
+The minimum moves explicitly from **2023.3 / Java 17** to **2026.1.5.1 / Java 21**.
+This is an approved compatibility tradeoff, not a claim that older builds are
+technically impossible. Released 233 binaries and source establish:
 
-Normal files and preserving diff files now use public `NavigationRequest` and
-suspending `NavigationService.navigate` APIs with explicit focus intent. The
-service is obtained with `project.serviceAsync` in an active background
-coroutine, and the request factory runs under a read action. Offset -1 leaves
-the caret unchanged. Editor handles are obtained on the EDT after navigation,
-with a project-disposal guard.
+- The current request-based navigation descriptor is absent; the direct
+  `Navigatable` overloads are internal.
+- The public data-context overload ultimately uses synchronous
+  `OpenFileDescriptor.navigate` on EDT. No typing-preserving prototype is claimed.
+- Public synchronous file opening exists, but reintroducing it requires fresh
+  typing regression evidence because lost chat keys motivated the async path.
+- A separate Java 17 build with legacy terminal hooks is technically feasible,
+  but needs its own editor implementation, descriptor, verifier and native tests.
+  It has not been implemented or tested. One modern build was chosen instead.
 
-The plugin no longer references `FileEditorOpenOptions`, its focus method, or
-the internal `FileEditorManagerEx.openFile` overload. There is no reflective
-internal API fallback. Exact minimum-SDK source inspection confirms that the
-public service uses suspending editor loading inside the platform, avoiding
-the synchronous loading loop that previously discarded queued chat keys.
+Sources: JetBrains' [multiple-version guidance](https://plugins.jetbrains.com/docs/intellij/build-number-ranges.html#targeting-multiple-ide-versions),
+[dependency helpers](https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-dependencies-extension.html),
+and [released 233 navigation implementation](https://github.com/JetBrains/intellij-community/blob/idea/233.11799.241/platform/lang-impl/src/com/intellij/platform/ide/navigation/impl/IdeNavigationService.kt).
+Exact SDK signatures, annotations and binary hashes are retained in the archive.
 
-The first native test caught cancellation during blocking navigation-service
-initialization. The asynchronous service lookup fixes that failure; the final
-candidate passed the native tests below.
+## Artifact and results
 
-## Artifact and verification
+Plugin **3.96.0**: `jetbrains_plugin/build/distributions/ZooCode-3.96.0.zip`.
 
-ZIP: `jetbrains_plugin/build/distributions/ZooCode-3.96.0.zip`
+SHA-256: `d4516add5b27bbbea5e60540d1725328b24b1f17e83e4b9828a23a9e26e5475a`.
+Rebuilding after restoring the source mutations retained this exact hash.
+Verifier **1.410**, on Temurin **21.0.12**, checked the same ZIP on all targets:
 
-SHA-256: `e121a635e78cd379669fe00bee5ae711579c2a5e39bf1ae53992ce62697c7852`
+| Target | Verdict | Internal | Scheduled for removal | Deprecated | Experimental | Terminal dispatch/output |
+| --- | --- | ---: | ---: | ---: | ---: | --- |
+| IU-261.27258.136 / IDEA 2026.1.5.1 | Compatible | 0 | 7 | 7 | 6 | PASS |
+| WS-262.9437.145 / WebStorm 2026.2.1 | Compatible | 0 | 7 | 7 | 6 | PASS |
+| IC-263.7307.112 / pinned 2026.3 SDK | Compatible | 0 | 7 | 8 | 6 | PASS |
 
-Plugin Verifier **1.410** checked this same ZIP. Reports were retained separately
-for each IDE, and the ZIP hash remained unchanged after all checks. Verifier CLI
-ran on Temurin 21.0.12 with each native IDE's bundled runtime supplied for analysis.
-The IC SDK check also passed through Gradle's publication gate on Java 21.
+These reports contain warnings. The broad verifier gate rejects internal usages,
+compatibility problems and invalid plugins; the targeted bytecode scanner alone
+is not evidence of zero internal usages.
 
-| IDE/build | Verdict | Internal | Scheduled for removal | Deprecated | Experimental |
-| --- | --- | ---: | ---: | ---: | ---: |
-| IDEA 2026.1.5.1 / IU-261.27258.136 | Compatible | **0** | 7 | 7 | 6 |
-| WebStorm 2026.2.1 / WS-262.9437.145 | Compatible | **0** | 7 | 7 | 6 |
-| IDEA 2026.3 SDK / IC-263.7307.112 | Compatible | **0** | 7 | 8 | 6 |
-| IDEA 2026.3 native / IU-263.7307.112 | Compatible | **0** | 7 | 8 | 6 |
+- **137 PR-selected JVM tests passed**, zero skips/failures/errors, including
+  focus guards, Linux PTY forwarding and shell state. This is not the full suite:
+  platform-fixture `ExtensionDecouplingTest` and Windows ConPTY were not selected.
+- **18 local HTTP fixture/relay tests passed**, along with the packaged-bytecode
+  scanner/self-test, actionlint, integration dry-run and whitespace checks.
+- Native IDEA **261 and 263 passed** on bundled JBR **25.0.4.1**: deliberate
+  file focus and a typed character, deliberate diff focus, all 12 preserving
+  file/diff sequences, and exact typing/focus through both streamed chat turns.
+- Reverting all four bulk file-operation `fsPath` conversions or changing the
+  distinct navigation-deadline error back to cancellation independently failed
+  regression tests. Sources were restored and rebuilt to the same ZIP hash.
+  Earlier queue/open/refresh mutation results remain in the historical evidence.
 
-All four reports contain zero binary compatibility problems. These are not
-all-warnings-clean results: proxy settings and the terminal customizer remain
-follow-up work under issue #18. The experimental findings concern generated
-`ToolWindowFactory` compatibility methods. The newer IDE additionally deprecates
-the public navigation overload with a data context; it remains binary compatible.
+## Review changes
 
-Local reports: `jetbrains_plugin/build/reports/pluginVerifier/final/<IDE-build>/`.
-The [machine-readable record](editor-api-migration-results.json) includes the
-artifact identity, report paths and native/JVM results.
+| Findings | Resolution |
+| --- | --- |
+| 1–3 | Approved baseline decision above; corrected PR scope; WebStorm coverage retained. |
+| 4–5 | Native deliberate-focus checks added. Deliberate diff close/show operations now use the shared queue and suspending EDT context. |
+| 6, 9 | Terminal dispatch/output proved against 261, 262 and 263 binaries. Both PR/publication workflows verify WebStorm 262 and support both PTY jar layouts. |
+| 7–8 | One artifact identity and compressed, auditable evidence; historical candidates are archived separately. |
+| 10–11 | Compiled production-routing tests bind file/diff opens to the queue and both File conversions to fsPath; three actual mutations were rejected. URI tests cover drive, UNC, Unix and escaped characters. |
+| 12–13 | Non-strict normalization comment corrected. URI identity and Java filesystem conversion remain distinct; pre-existing VFS path uses are unchanged. |
+| 14 | Active navigation has a 120-second cooperative deadline. Its expiry raises EditorNavigationTimeoutException; caller cancellation and nested operation timeouts retain cancellation semantics. Blocking IDE code cannot be forcibly interrupted. |
+| 15 | Identity/dirty-state tests deserialize production WorkspaceEdit data. File creation/deletion/rename tests cover nullable endpoints, normalization, options and metadata. |
+| 16–17 | Stale comments/counts corrected. Unified IDEA dependency replaces legacy IC for 261; the dependency graph resolves `com.jetbrains.intellij.idea:idea:2026.1.5.1`. Full remote-SDK build remains a CI check. |
 
-## Behavior and build checks
+The desktop overlap is stress coverage; unit tests establish deterministic queue
+ordering and compiled routing tests establish that production calls use it.
 
-- Final focused JVM suites: **129 tests, 123 passed, 6 skipped, 0 failed**.
-- Packaged bytecode scanner and its synthetic self-test: passed; the scanner
-  explicitly rejects internal editor-option calls.
-- 2026.3 terminal dispatch/output smoke: passed against the pinned SDK's binaries.
-- Local HTTP provider/relay fixture suites: **18 passed**; no live provider calls.
-- Changed GitHub workflows: actionlint passed. Script integration contract checks
-  (`integration --dry-run`) passed.
+## Evidence and limits
 
-| Native fixture | Files/diffs opened | First-turn keys | Follow-up keys | Result |
-| --- | --- | --- | --- | --- |
-| IDEA 2026.1.5.1 | 12 / 12 | 23 / 23 | 11 / 11 | PASS |
-| IDEA 2026.3 | 12 / 12 | 25 / 25 | 11 / 11 | PASS |
+[Machine-readable results](editor-api-migration-results.json) record the artifact,
+source fingerprint, target builds, counts and evidence paths. The
+[evidence archive](editor-api-migration-evidence.tar.gz) retains raw verifier
+reports, JVM XML, mutation logs, SDK metadata, native predicates and historical
+candidate records. To inspect it without repopulating the repository:
 
-Both streamed conversations completed with preserved chat focus and exact drafts.
-Both native IDEA distributions ran their bundled JBR 25.0.4.1; the platform SDK
-and plugin bytecode target Java 21. Native evidence copies are retained under
-`jetbrains_plugin/build/reports/editor-api-migration/native/`.
+```sh
+mkdir -p /tmp/zoo-api-evidence
+tar -xzf docs/validation/editor-api-migration-evidence.tar.gz -C /tmp/zoo-api-evidence
+```
 
-The issue-specific WebStorm 2026.2.1 live regression remains in CI with its
-original environment approval. The Windows fixture matrix now includes
-2026.1.5.1 and retains 2026.2.1. No hosted Windows or live Solheim run was started.
+The local package embeds the cached **3.84.0** extension payload and local
+extension-host build, with JVM plugin descriptor **3.96.0**. The missing platform
+archive was reconstructed from the existing prepared payload. Publication CI must
+assemble and verify its own exact ZIP; these results cannot validate a differently
+packaged artifact.
 
-## Remaining validation limits
+Hosted Windows/native WebStorm and protected live-provider checks were not rerun.
+Their coverage and approval requirements remain intact. Earlier local WebStorm
+activation was blocked by licensing. Fixture conversations do not run model-driven
+terminal commands; JVM PTY/dispatch tests are separate evidence, and the protected
+live job remains the end-to-end terminal check.
 
-The local WebStorm desktop fixture loaded Zoo Code but was blocked by the IDE's
-**Manage Licenses** dialog in its isolated profile. It was stopped and is recorded
-as **BLOCKED_LICENSE**, not a passing desktop test. An activated installation or
-existing legitimate activation file is needed to complete it locally; its static
-compatibility check passed.
+Initial disk-exhausted runs and the initial wrong-PTY-layout smoke were not
+counted as passes. Their context and the subsequent fresh results are archived.
+The maintainer identified the failing Marketplace check as IDEA **2026.1.5.1**,
+**2026-11-09 09:56** (timezone unspecified), Verifier **1.410**, with 3 internal
+and 12 removal usages. The original full report/uploaded ZIP hash remain missing.
+No publication or issue closure was performed.
 
-A broader JVM run earlier in migration failed seven tests: two SDK-dependent
-assertions were subsequently adapted and passed in the final focused suite;
-five `ExtensionDecouplingTest` cases failed during fixture resource initialization.
-Those five remain unresolved. The full all-test suite was not rerun on the final
-candidate, and no clean-baseline comparison is claimed for those failures.
+## Follow-up spot-check
 
-No publication or issue closure was performed. This work resolves the prioritized
-internal editor API findings, not every acceptance criterion of issues #16/#18.
+- All four bulk create/delete/rename File conversions now use `fsPath`; a
+  compiled production-routing test covers them, and reverting them fails it.
+  The host tests were Linux runs; Windows behavior still needs hosted CI.
+- Deadline expiry is a distinct error, while a regression preserves nested
+  timeout cancellation. The timeout-as-cancellation mutation was rejected.
+- `IU` selects the unified IDEA artifact. The unused Java build dependency was
+  removed; the packaged descriptor requires only platform and terminal modules
+  (JCEF stays optional). Fresh WebStorm and IC verifier results establish no
+  missing binary/API dependency on Ultimate for this ZIP.
+- GitHub's live PR title/body already state the 261 / Java 21 baseline. The
+  stale-description finding did not match the live PR when checked. The
+  existing migration PR retains its associated Windows regression fixes.
+- The commit/rebuild checkpoint remains open until signing is resolved. The
+  current artifact has complete fresh test/verifier/native evidence, but is
+  explicitly not represented as verification of a new commit.

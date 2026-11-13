@@ -17,8 +17,8 @@ import java.util.jar.JarFile;
 import java.util.jar.JarOutputStream;
 
 /**
- * Headless proof for the 2026.3 terminal compatibility, run by the
- * smoke263Dispatch Gradle task against an unpacked ideaIC 263.7307.112.
+ * Headless proof for terminal compatibility across the declared range, run by the
+ * smoke263Dispatch Gradle task against each selected verification IDE.
  * It checks the facts that the Plugin Verifier cannot see:
  * <ul>
  *   <li>the platform entry point createTtyConnector(ShellStartupOptions) exists
@@ -92,7 +92,7 @@ public class Smoke263DispatchCheck {
         checkNoBannedRefs(pluginJar);
         checkConnectorForwards();
 
-        System.out.println("[smoke-263] OK: dispatch binds and output forwarding works against the 2026.3 IDE jars");
+        System.out.println("[smoke-263] OK: dispatch binds and output forwarding works against the selected IDE jars");
     }
 
     private static void checkPlatformEntryPoint(Path terminalJar) throws Exception {
@@ -110,21 +110,6 @@ public class Smoke263DispatchCheck {
         }
         checkOverridable(RUNNER_CLASS, entryPoint);
 
-        // The compatibility premise: the 2023.3 signature returns PtyProcess and the
-        // 2026.3 signature returns java.lang.Process. Both facts must hold, otherwise
-        // this smoke check no longer describes the platforms it claims to compare.
-        if (runner.findMethod("createProcess",
-                "(Lorg/jetbrains/plugins/terminal/ShellStartupOptions;)Ljava/lang/Process;") == null) {
-            throw new AssertionError(
-                RUNNER_CLASS + " no longer declares createProcess(ShellStartupOptions) returning "
-                    + "java.lang.Process; the premise of the compatibility patch changed");
-        }
-        if (runner.findMethod("createProcess",
-                "(Lorg/jetbrains/plugins/terminal/ShellStartupOptions;)Lcom/pty4j/PtyProcess;") != null) {
-            throw new AssertionError(
-                "createProcess(ShellStartupOptions) still returns PtyProcess on this IDE; "
-                    + "the premise of the compatibility patch changed");
-        }
         System.out.println("[smoke-263] platform entry point: createTtyConnector" + DISPATCH_DESCRIPTOR
             + " on " + RUNNER_CLASS + " is public, non-static and non-final");
     }

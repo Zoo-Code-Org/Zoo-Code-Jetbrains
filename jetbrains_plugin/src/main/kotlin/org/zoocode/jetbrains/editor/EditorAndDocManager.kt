@@ -309,15 +309,13 @@ class EditorAndDocManager(val project: Project) : Disposable {
                         ideaEditor = openFileAsync(diffFile)
                     }
                     DiffOpenPlan.DELIBERATE_VIA_DIFF_HELPER -> {
-                        ApplicationManager.getApplication().invokeAndWait {
-                            if (project.isDisposed) return@invokeAndWait
-                            LocalFileSystem.getInstance().findFileByPath(documentUri.path)
-                                ?.let {
-                                    ApplicationManager.getApplication().runReadAction { FileEditorManager.getInstance(project).closeFile(it) }
-                                }
-
-                            val diffEditorTabFilesManager = DiffEditorTabFilesManager.getInstance(project)
-                            ideaEditor = diffEditorTabFilesManager.showDiffFile(diffFile, true)
+                        editorOpenQueue.open {
+                            withContext(Dispatchers.EDT) {
+                                if (project.isDisposed) throw CancellationException("Project disposed before diff open")
+                                LocalFileSystem.getInstance().findFileByPath(documentUri.path)
+                                    ?.let { FileEditorManager.getInstance(project).closeFile(it) }
+                                ideaEditor = DiffEditorTabFilesManager.getInstance(project).showDiffFile(diffFile, true)
+                            }
                         }
                     }
                 }
