@@ -45,7 +45,12 @@ class TerminalPtyBuilderTest {
 
         val commandField = PtyProcessBuilder::class.java.getDeclaredField("myCommand")
         commandField.isAccessible = true
-        assertArrayEquals(arrayOf("/bin/sh", "-i"), commandField.get(builder) as Array<*>)
+        val command = commandField.get(builder)
+        val arguments = if (command is Array<*>) command else {
+            // Newer pty4j stores a public Command value instead of String[].
+            command.javaClass.getMethod("toArray").invoke(command) as Array<*>
+        }
+        assertArrayEquals(arrayOf("/bin/sh", "-i"), arguments)
 
         val environmentField = PtyProcessBuilder::class.java.getDeclaredField("myEnvironment")
         environmentField.isAccessible = true

@@ -43,11 +43,11 @@ jobs:
           echo "IDEA_263_BUILD=$build" >> "$GITHUB_ENV"
           echo "IDEA_263_SHA256=$digest" >> "$GITHUB_ENV"
 
-      - name: Set up Java 17
+      - name: Set up Java 21
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "21"
           cache: gradle
 
       - name: Restore the cached 2026.3 verification IDE
@@ -120,11 +120,16 @@ jobs:
           ./gradlew test
           --tests "org.zoocode.jetbrains.terminal.RawOutputTtyConnectorTest"
           --tests "org.zoocode.jetbrains.util.JcefSupportTest"
+          --tests "org.zoocode.jetbrains.util.ExecutablePathTest"
+          --tests "org.zoocode.jetbrains.ipc.proxy.LazyPromiseTest"
           --tests "org.zoocode.jetbrains.descriptor.PluginDescriptorTest"
           --tests "org.zoocode.jetbrains.terminal.TerminalPtyBuilderTest"
           --tests "org.zoocode.jetbrains.terminal.ShellIntegrationOutputStateTest"
           --tests "org.zoocode.jetbrains.terminal.TerminalShellReadinessTest"
           --tests "org.zoocode.jetbrains.editor.EditorFocusIntentTest"
+          --tests "org.zoocode.jetbrains.editor.WorkspaceEditTest"
+          --tests "org.zoocode.jetbrains.editor.EditorOpenQueueTest"
+          --tests "org.zoocode.jetbrains.editor.EditorRoutingContractTest"
           --tests "org.zoocode.jetbrains.terminal.TerminalWidgetVisibilityTest"
           --tests "org.zoocode.jetbrains.ui.WebViewMountPlanTest"
           --tests "org.zoocode.jetbrains.util.FocusRequestEpochTest"
@@ -143,13 +148,41 @@ jobs:
         shell: bash
         run: ./gradlew verifyPackagedBytecode --no-configuration-cache
 
+      - name: Record the plugin artifact checksum
+        working-directory: jetbrains_plugin
+        run: sha256sum build/distributions/*.zip > build/plugin-sha256.txt
+
+      - name: Verify plugin compatibility with the minimum IDEA 2026.1.5.1
+        working-directory: jetbrains_plugin
+        run: >
+          ./gradlew verifyPlugin smoke263Dispatch
+          -PsmokeVerifiedIde=true
+          -PverifierReportsDir=build/reports/pluginVerifier/261
+          --no-configuration-cache
+
+      - name: Verify plugin compatibility with WebStorm 2026.2.1
+        working-directory: jetbrains_plugin
+        run: >
+          ./gradlew verifyPlugin smoke263Dispatch
+          -PsmokeVerifiedIde=true
+          -PverifierType=WS
+          -PverifierVersion=2026.2.1
+          -PverifierReportsDir=build/reports/pluginVerifier/262
+          --no-configuration-cache
+
       - name: Verify plugin compatibility with the exact IDEA 2026.3 build
         working-directory: jetbrains_plugin
         shell: bash
         run: >
-          ./gradlew runPluginVerifier
+          ./gradlew verifyPlugin smoke263Dispatch
+          -PsmokeVerifiedIde=true
           -PverifierLocalIde="build/ideaIC-${IDEA_263_BUILD}"
+          -PverifierReportsDir=build/reports/pluginVerifier/263
           --no-configuration-cache
+
+      - name: Confirm verification used the recorded artifact
+        working-directory: jetbrains_plugin
+        run: sha256sum --check build/plugin-sha256.txt
 
       - name: Smoke check the 2026.3 createTtyConnector dispatch
         working-directory: jetbrains_plugin
@@ -158,6 +191,16 @@ jobs:
           ./gradlew smoke263Dispatch
           -PsmokeLocalIde="build/ideaIC-${IDEA_263_BUILD}"
           --no-configuration-cache
+
+      - name: Store compatibility reports and artifact identity
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: plugin-verifier-${{ github.sha }}
+          path: |
+            jetbrains_plugin/build/reports/pluginVerifier/**
+            jetbrains_plugin/build/plugin-sha256.txt
+          if-no-files-found: warn
 
   windows-verify:
     name: Windows terminal tests and PowerShell 5.1 smoke
@@ -181,17 +224,17 @@ jobs:
           Checkout: $env:GITHUB_WORKSPACE
           Tested commit: $(git rev-parse HEAD)
           OS: windows-latest
-          JDK: temurin 17
+          JDK: temurin 21
           Run: $env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID
           "@
           Write-Output $identity
           Set-Content -Path windows-run-identity.txt -Value $identity
 
-      - name: Set up Java 17
+      - name: Set up Java 21
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "21"
           cache: gradle
 
       # The same build-only fixtures the Linux job creates: the Gradle build
@@ -228,6 +271,10 @@ jobs:
             '--tests org.zoocode.jetbrains.terminal.ShellIntegrationOutputStateTest'
             '--tests org.zoocode.jetbrains.terminal.TerminalShellReadinessTest'
             '--tests org.zoocode.jetbrains.terminal.WindowsConPtyProcessTest'
+            '--tests org.zoocode.jetbrains.editor.WorkspaceEditTest'
+            '--tests org.zoocode.jetbrains.editor.EditorOpenQueueTest'
+            '--tests org.zoocode.jetbrains.editor.EditorRoutingContractTest'
+            '--tests org.zoocode.jetbrains.util.ExecutablePathTest'
             '--no-configuration-cache'
           )
           cmd /c "gradlew.bat $($taskList -join ' ') 2>&1" | Tee-Object -FilePath ..\windows-test-log.txt
@@ -263,7 +310,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: windows-pr-results-${{ github.sha }}-windows-latest-jdk17
+          name: windows-pr-results-${{ github.sha }}-windows-latest-jdk21
           path: |
             jetbrains_plugin/build/test-results/test/*.xml
             jetbrains_plugin/build/reports/tests/test/**

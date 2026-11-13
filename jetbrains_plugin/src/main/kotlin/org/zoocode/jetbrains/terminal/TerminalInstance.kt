@@ -237,49 +237,13 @@ class TerminalInstance(
     }
 
     /**
-     * Create custom runner.
-     *
-     * IntelliJ 2023.3 runs the session through [createProcess] returning PtyProcess
-     * and then through [createTtyConnector] with a PtyProcess argument. On 2026.3
-     * (build 263.5701.42) that createProcess signature is gone: the method now returns
-     * java.lang.Process, and the session enters through createTtyConnector with a
-     * ShellStartupOptions argument. The second method is declared without `override`
-     * because it does not exist in 2023.3; at runtime its exact descriptor overrides
-     * the 2026.3 method and shadows the LocalTerminalDirectRunner implementation. No
-     * method calls super.createProcess or super.createTtyConnector, because the 2023.3
-     * descriptors do not resolve on 2026.3.
+     * Start our local PTY through the supported startup-options connector hook.
+     * The 261–263 dispatch smoke checks bind this hook; process-based overrides are
+     * unnecessary. WSL, dev-container and RemDev terminal support is not claimed.
      */
     private fun createCustomRunner(): LocalTerminalDirectRunner {
         return object : LocalTerminalDirectRunner(project) {
-            override fun createProcess(options: ShellStartupOptions): PtyProcess {
-                logger.info("🔧 Custom createProcess method called...")
-
-                return startTerminalProcess(options)
-            }
-
-            override fun createTtyConnector(process: PtyProcess): TtyConnector {
-                logger.info("🔧 Custom createTtyConnector(PtyProcess) method called...")
-                return createRawOutputConnector(process)
-            }
-
-            /**
-             * The 2026.3 session entry point. On build 263 the platform
-             * dispatches createTtyConnector with ShellStartupOptions, because
-             * createProcess no longer exists there with the 2023.3 signature.
-             * The method is compiled without `override`, because 2023.3
-             * declares no such method; at runtime the identical descriptor
-             * overrides the platform method.
-             *
-             * Support boundary: this bridge is local-only. It starts a
-             * PtyProcess on the local machine. WSL-internal terminals,
-             * dev-container terminals, and RemDev sessions are not supported.
-             * The 2026.3 WSL-internal and dev-container sessions carry
-             * non-local EEL descriptors, and this bridge implements none. The
-             * RemDev frontend receives the inherited platform guard and never
-             * reaches this runner. No EEL support is claimed.
-             */
-            fun createTtyConnector(startupOptions: ShellStartupOptions): TtyConnector {
-                logger.info("🔧 Custom createTtyConnector(ShellStartupOptions) method called...")
+            override fun createTtyConnector(startupOptions: ShellStartupOptions): TtyConnector {
                 val process = startTerminalProcess(startupOptions)
                 return createRawOutputConnector(process)
             }
@@ -335,7 +299,7 @@ class TerminalInstance(
      *
      * UTF-8 matches the platform connector on every supported build:
      * LocalTerminalDirectRunner assigns myDefaultCharset = StandardCharsets.UTF_8
-     * and passes it to PtyProcessTtyConnector (intellij-community branch 233) and
+     * and passes it to PtyProcessTtyConnector (platform implementation) and
      * to LocalTerminalTtyConnector (2026.3), so the raw bytes decode the same way
      * the stock terminal would.
      */

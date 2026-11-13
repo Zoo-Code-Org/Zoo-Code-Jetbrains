@@ -58,14 +58,14 @@ SPDX-License-Identifier: Apache-2.0
             <li>GoLand</li>
             <li>DataGrip</li>
             <li>Rider</li>
-            <li>Android Studio <strong>2026.1.4 or newer</strong> (currently available as a preview)</li>
+            <li>Android Studio builds within the supported IntelliJ Platform range, with JCEF</li>
         </ul>
-        <p>The plugin targets IntelliJ Platform build <strong>233</strong> (JetBrains 2023.3) or newer. Android Studio requires version <strong>2026.1.4 or newer</strong> because that release includes the JCEF support required by Zoo Code. At present, Android Studio 2026.1.4 is available through the preview channel.</p>
+        <p>The plugin targets IntelliJ Platform build <strong>261.27258.136</strong> (JetBrains 2026.1.5.1) through <strong>263.*</strong>. Android Studio must meet the same platform build range and include JCEF.</p>
 
         <h2>Requirements</h2>
         <ul>
-            <li>A supported JetBrains IDE based on IntelliJ Platform build 233 or newer</li>
-            <li>Android Studio 2026.1.4 or newer when using Android Studio; install a preview build until this version reaches the stable channel</li>
+            <li>A supported JetBrains IDE based on IntelliJ Platform build 261.27258.136 through 263.*</li>
+            <li>Android Studio must use IntelliJ Platform build 261.27258.136 through 263.* and include JCEF</li>
             <li>A JCEF-enabled IDE runtime, which Zoo Code requires to render its interface</li>
             <li><a href="https://nodejs.org/">Node.js</a> <strong>20.6.0 or newer</strong> available on your PATH</li>
         </ul>

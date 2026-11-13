@@ -29,20 +29,16 @@ fun interface TerminalRawDataCallback {
  *
  * The class extends jediterm ProcessTtyConnector. Its
  * (java.lang.Process, java.nio.charset.Charset) constructor has the exact same
- * descriptor in IntelliJ Platform builds 233 (lib/lib-client.jar) and 263
- * (lib/intellij.libraries.jediterm.core.jar), so one compiled super call
- * resolves on both. ready, isConnected, waitFor, both write overloads, and
- * getProcess are inherited unchanged. The platform
- * com.intellij.terminal.pty.PtyProcessTtyConnector cannot be the superclass:
- * on 233 its constructor takes com.pty4j.PtyProcess and on 2026.3 it takes
- * java.lang.Process, so no single compiled super call resolves on both. The
+ * descriptor across the supported 261–263 SDKs
+ * (lib/intellij.libraries.jediterm.core.jar). ready, isConnected, waitFor,
+ * both write overloads, and getProcess are inherited unchanged. The
  * session teardown handles any TtyConnector: it only asks
  * LocalTerminalTtyConnector for closeSafely and falls back to plain close
  * otherwise (TerminalUtilKt.closeAndWaitFor).
  *
  * Overrides keep the behavior the platform connectors provide:
  * - read forwards each decoded chunk to [callback] before returning it.
- * - resize skips a dead process, matching PtyProcessTtyConnector on both builds.
+ * - resize skips a dead process, matching PtyProcessTtyConnector across the supported SDKs.
  * - close sends SIGHUP first on Unix and destroys after one second; on Windows
  *   ConPTY it writes the ETX interrupt byte to the process stdin before
  *   destroy; every other process is destroyed immediately. super.close is not

@@ -10,13 +10,14 @@ import com.intellij.diff.chains.DiffRequestChain
 import com.intellij.diff.chains.SimpleDiffRequestChain
 import com.intellij.diff.contents.DiffContent
 import com.intellij.diff.contents.FileDocumentContentImpl
+import com.intellij.diff.editor.DiffVirtualFileBase
 import com.intellij.diff.editor.ChainDiffVirtualFile
 import com.intellij.diff.editor.DiffEditorTabFilesManager
-import com.intellij.diff.editor.DiffRequestProcessorEditor
 import com.intellij.diff.requests.SimpleDiffRequest
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
+import com.intellij.openapi.components.serviceAsync
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.diff.DiffBundle
 import com.intellij.openapi.editor.Editor
@@ -24,8 +25,11 @@ import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileEditor.FileEditor
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.FileEditorManagerListener
-import com.intellij.openapi.fileEditor.ex.FileEditorManagerEx
-import com.intellij.openapi.fileEditor.impl.FileEditorOpenOptions
+import com.intellij.openapi.application.EDT
+import com.intellij.openapi.application.readAction
+import com.intellij.platform.backend.navigation.NavigationRequest
+import com.intellij.platform.ide.navigation.NavigationOptions
+import com.intellij.platform.ide.navigation.NavigationService
 import com.intellij.openapi.fileTypes.FileType
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.LocalFileSystem
@@ -54,6 +58,7 @@ class EditorAndDocManager(val project: Project) : Disposable {
 
     private var job: Job? = null
     private val editorStateService:EditorStateService = EditorStateService(project)
+    private val editorOpenQueue = EditorOpenQueue()
 
     init {
         ideaEditorListener = object : FileEditorManagerListener {
@@ -210,35 +215,44 @@ class EditorAndDocManager(val project: Project) : Disposable {
     }
 
 
-    private suspend fun openFilePreservingFocus(file: VirtualFile): Array<FileEditor> {
+    private suspend fun openFileAsync(file: VirtualFile, requestFocus: Boolean = false): Array<FileEditor> = editorOpenQueue.open {
         if (project.isDisposed) throw CancellationException("Project disposed before editor open")
-        // Synchronous editor loading pumps a restricted event loop that can
-        // discard chat keys, even when no focus transfer is requested.
-        // Invoke the JVM no-arg constructor: Kotlin's default-argument constructor
-        // changes signature between supported IDE builds.
-        val openOptions = FileEditorOpenOptions::class.java.getConstructor()
-            .newInstance().withRequestFocus(false)
-        val editors = FileEditorManagerEx.getInstanceEx(project)
-            .openFile(file, openOptions).allEditors.toTypedArray()
-        // Suspension can outlive the project; do not create handles or tabs afterward.
-        if (project.isDisposed) throw CancellationException("Project disposed during editor open")
-        return editors
+        // NavigationService is public on the minimum SDK and opens files through
+        // the platform's suspending editor path. A negative offset leaves the caret
+        // unchanged and also supports the virtual files used for diff tabs.
+        withContext(Dispatchers.Default) {
+            // Avoid blocking service initialization after a suspending read action.
+            // The platform must initialize the service in an active coroutine context.
+            val navigationService = project.serviceAsync<NavigationService>()
+            val request = readAction {
+                NavigationRequest.sourceNavigationRequest(project, file, -1)
+            } ?: throw CancellationException("File unavailable before editor open")
+            navigationService.navigate(
+                request,
+                NavigationOptions.defaultOptions().requestFocus(requestFocus),
+                null,
+            )
+            // Suspension can outlive the project; do not create handles or tabs afterward.
+            withContext(Dispatchers.EDT) {
+                if (project.isDisposed) throw CancellationException("Project disposed during editor open")
+                FileEditorManager.getInstance(project).getEditors(file)
+            }
+        }
     }
 
     /**
      * Opens a file editor for the document.
      *
      * [preserveFocus] carries the display intent from the extension host. The
-     * [FileEditorManager.openFile] boolean requests editor focus, so a
-     * preserving open must pass its inverse and must never pass preservation
-     * itself.
+     * public opening request takes the inverse as its requestFocus flag.
+     * Both preserving and deliberate normal-file opens suspend until the
+     * editor composite is published.
      *
      * @param documentUri URI of the document to open
      * @param preserveFocus true keeps the current focus owner; absent defaults to false
      * @param options Editor formatting configuration, separate from display intent
      */
     suspend fun openEditor(documentUri: URI, preserveFocus: Boolean = false, options: ResolvedTextEditorConfiguration = ResolvedTextEditorConfiguration()): EditorHolder {
-        val fileEditorManager = FileEditorManager.getInstance(project)
         val path = documentUri.path
         var ideaEditor : Array<out FileEditor?>? = null
 
@@ -246,15 +260,7 @@ class EditorAndDocManager(val project: Project) : Disposable {
         val file = vfs.findFileByPath(path)
         file?.let {
             if (!project.isDisposed) {
-                if (preserveFocus) {
-                    ideaEditor = openFilePreservingFocus(it)
-                } else {
-                    ApplicationManager.getApplication().invokeAndWait {
-                        if (!project.isDisposed) {
-                            ideaEditor = fileEditorManager.openFile(it, editorFocusRequest(preserveFocus))
-                        }
-                    }
-                }
+                ideaEditor = openFileAsync(it, editorFocusRequest(preserveFocus))
             }
         }
         val eh = getEditorHandleByUri(documentUri,false)
@@ -300,18 +306,16 @@ class EditorAndDocManager(val project: Project) : Disposable {
                 val diffFile = ChainDiffVirtualFile(requestChain, DiffBundle.message("label.default.diff.editor.tab.name", *arrayOfNulls<Any>(0)))
                 when (diffOpenPlan(preserveFocus)) {
                     DiffOpenPlan.PRESERVE_VIA_FILE_EDITOR -> {
-                        ideaEditor = openFilePreservingFocus(diffFile)
+                        ideaEditor = openFileAsync(diffFile)
                     }
                     DiffOpenPlan.DELIBERATE_VIA_DIFF_HELPER -> {
-                        ApplicationManager.getApplication().invokeAndWait {
-                            if (project.isDisposed) return@invokeAndWait
-                            LocalFileSystem.getInstance().findFileByPath(documentUri.path)
-                                ?.let {
-                                    ApplicationManager.getApplication().runReadAction { FileEditorManager.getInstance(project).closeFile(it) }
-                                }
-
-                            val diffEditorTabFilesManager = DiffEditorTabFilesManager.getInstance(project)
-                            ideaEditor = diffEditorTabFilesManager.showDiffFile(diffFile, true)
+                        editorOpenQueue.open {
+                            withContext(Dispatchers.EDT) {
+                                if (project.isDisposed) throw CancellationException("Project disposed before diff open")
+                                LocalFileSystem.getInstance().findFileByPath(documentUri.path)
+                                    ?.let { FileEditorManager.getInstance(project).closeFile(it) }
+                                ideaEditor = DiffEditorTabFilesManager.getInstance(project).showDiffFile(diffFile, true)
+                            }
                         }
                     }
                 }
@@ -450,17 +454,12 @@ class EditorAndDocManager(val project: Project) : Disposable {
                         }
                     }else{
                         ApplicationManager.getApplication().invokeAndWait {
-                            FileEditorManager.getInstance(project).allEditors.forEach {
-                                if(it is DiffRequestProcessorEditor && handler.diff){
-                                    val differ = it
-                                    differ.processor.activeRequest?.let { req ->
-                                        for (filesToRefresh in req.filesToRefresh) {
-                                            if(filesToRefresh.path == handler.document.uri.path){
-                                                differ.dispose()
-                                            }
-                                        }
-                                    }
-                                }
+                            if (handler.diff && !project.isDisposed) {
+                                val manager = FileEditorManager.getInstance(project)
+                                manager.allEditors.filter { editor ->
+                                    editor.file is DiffVirtualFileBase &&
+                                        editor.filesToRefresh.any { it.path == handler.document.uri.path }
+                                }.map { it.file }.distinct().forEach(manager::closeFile)
                             }
 
                         }

@@ -63,3 +63,7 @@ plans/
 
 # Generated test reports
 test-results/
+
+# IntelliJ Platform Gradle plugin local artifacts and sandbox
+jetbrains_plugin/.intellijPlatform/
+jetbrains_plugin/.kotlin/

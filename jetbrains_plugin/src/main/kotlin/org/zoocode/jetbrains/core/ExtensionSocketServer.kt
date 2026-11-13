@@ -125,7 +125,7 @@ class ExtensionSocketServer() : ISocketServer {
     private fun acceptConnections() {
         val server = serverSocket ?: return
         
-        logger.info("Socket server started, waiting for connections..., tid: ${Thread.currentThread().id}")
+        logger.info("Socket server started, waiting for connections..., thread: ${Thread.currentThread().name}")
         
         while (isRunning && !Thread.currentThread().isInterrupted) {
             try {

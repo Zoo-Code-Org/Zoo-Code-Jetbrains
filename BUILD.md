@@ -2,6 +2,17 @@
 
 This directory contains the build and maintenance scripts for the Zoo Code JetBrains project. These scripts follow open source conventions and provide a unified interface for project operations.
 
+## Supported build environment
+
+This release line targets IntelliJ Platform **261.27258.136 through 263.***
+(2026.1.5.1 through the 2026.3 branch) and requires **JDK 21**. Use the committed
+Gradle 9.2.1 wrapper. Older IDEs must use an earlier Zoo Code release.
+
+The default SDK is pinned in `jetbrains_plugin/gradle.properties`. For a local
+unpacked copy of the same SDK, pass `-PplatformLocalIde=/path/to/idea`.
+Run `./gradlew verifyPlugin -PverifierLocalIde=/path/to/idea` from
+`jetbrains_plugin` to check the distributable; internal API findings fail the task.
+
 ## Quick Start
 
 ### Linux/macOS

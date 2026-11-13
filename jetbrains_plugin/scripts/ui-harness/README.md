@@ -38,7 +38,7 @@ operations and needs the provider setup documented below. Gradle tests alone do
 not exercise the bundled extension in a running IDE.
 
 The Windows CI workflow pins extension 3.96.0 and builds the checkout;
-it has no input for an existing release ZIP. Its IDEA matrix is 2025.3 and
+it has no input for an existing release ZIP. Its IDEA matrix is 2026.1.5.1 and
 2026.2.1, so those jobs do not establish compatibility with IDEA 2023.3.8.
 Record the exact ZIP, IDE version, and evidence directory when comparing builds.
 
@@ -303,3 +303,13 @@ loop. Exact draft and focus assertions are unchanged.
 The external Linux agreement helper only targets named IDE agreement windows
 and stops when the in-IDE driver starts. It no longer clicks arbitrary windows
 by size during a conversation.
+
+## Editor API review regression
+
+With `HARNESS_DIFF_STRESS=true`, the fixture first verifies that deliberate
+file opens transfer native focus and receive a typed character, and deliberate
+diff opens transfer focus. It then returns to chat through the normal setup
+click and runs the preserving file/diff sequence during streamed native typing.
+The overlap in the desktop fixture is stress coverage; deterministic ordering
+is asserted by `EditorOpenQueueTest`, and `EditorRoutingContractTest` checks
+the compiled production call sites actually enter that queue.

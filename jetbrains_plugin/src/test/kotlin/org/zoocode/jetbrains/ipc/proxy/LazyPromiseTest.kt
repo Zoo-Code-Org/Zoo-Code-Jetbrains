@@ -84,7 +84,10 @@ class LazyPromiseTest {
             promise.await()
             fail("Expected remote failure")
         } catch (actual: IllegalStateException) {
-            assertSame(error, actual)
+            // The IDE's coroutine runtime can recover the asynchronous stack by
+            // copying the exception and retaining the original as its cause.
+            assertTrue(actual === error || actual.cause === error)
+            assertEquals("remote failure", actual.message)
         }
     }
 

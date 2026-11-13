@@ -4,15 +4,21 @@
 // SPDX-License-Identifier: APACHE2.0
 // SPDX-License-Identifier: Apache-2.0
 
-import org.jetbrains.intellij.tasks.RunPluginVerifierTask
+import org.jetbrains.intellij.platform.gradle.tasks.VerifyPluginTask
+import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
+import org.jetbrains.intellij.platform.gradle.TestFrameworkType
+import org.gradle.process.ExecOperations
+import javax.inject.Inject
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.jetbrains.kotlin.gradle.dsl.KotlinVersion
 
 // Convenient for reading variables from gradle.properties
 fun properties(key: String) = providers.gradleProperty(key)
 
 plugins {
     id("java")
-    id("org.jetbrains.kotlin.jvm") version "1.8.10"
-    id("org.jetbrains.intellij") version "1.13.3"
+    id("org.jetbrains.kotlin.jvm") version "2.3.20"
+    id("org.jetbrains.intellij.platform") version "2.20.0"
     id("org.jlleitschuh.gradle.ktlint") version "11.6.1"
     id("io.gitlab.arturbosch.detekt") version "1.23.4"
 }
@@ -22,17 +28,17 @@ apply(from = "genPlatform.gradle")
 // Use Java/Kotlin toolchains instead of per-task source/target
 java {
     toolchain {
-        languageVersion.set(JavaLanguageVersion.of(17))
+        languageVersion.set(JavaLanguageVersion.of(21))
     }
 }
 
 kotlin {
-    jvmToolchain(17)
+    jvmToolchain(21)
 }
 
 // Toolchain launcher used by verification tasks that start a plain JVM.
 val verificationJavaLauncher = javaToolchains.launcherFor {
-    languageVersion.set(JavaLanguageVersion.of(17))
+    languageVersion.set(JavaLanguageVersion.of(21))
 }
 
 // ------------------------------------------------------------
@@ -136,7 +142,7 @@ fun Sync.prepareSandbox() {
     // Set duplicate strategy to include files, with later sources taking precedence
     duplicatesStrategy = DuplicatesStrategy.INCLUDE
 
-    val sandboxDir = intellij.pluginName.get()
+    val sandboxDir = "ZooCode"
 
     // Themes
     val themesDir = "${project.projectDir.absolutePath}/src/main/resources/themes/"
@@ -246,9 +252,24 @@ version = properties("pluginVersion").get()
 
 repositories {
     mavenCentral()
+    intellijPlatform { defaultRepositories() }
 }
 
 dependencies {
+    intellijPlatform {
+        val localIde = providers.gradleProperty("platformLocalIde").orNull
+        if (localIde != null) local(file(localIde).absolutePath)
+        else create {
+            val code = properties("platformType").get()
+            type.set(if (code == "IU") IntelliJPlatformType.IntellijIdea
+                else IntelliJPlatformType.entries.single { it.code == code })
+            version = properties("platformVersion").get()
+            useInstaller = false
+        }
+        bundledPlugin("org.jetbrains.plugins.terminal")
+        testFramework(TestFrameworkType.Platform)
+        pluginVerifier("1.410")
+    }
     implementation("com.squareup.okhttp3:okhttp:4.10.0")
     implementation("com.google.code.gson:gson:2.10.1")
     implementation("org.apache.commons:commons-compress:1.27.1")
@@ -256,21 +277,52 @@ dependencies {
     detektPlugins("io.gitlab.arturbosch.detekt:detekt-formatting:1.23.4")
 }
 
-// Configure Gradle IntelliJ Plugin
-// Read more: https://plugins.jetbrains.com/docs/intellij/tools-gradle-intellij-plugin.html
-intellij {
-    pluginName.set("ZooCode")
-    version.set(properties("platformVersion"))
-    type.set(properties("platformType"))
-
-    plugins.set(
-        listOf(
-            "com.intellij.java",
-            // Add JCEF support
-            "org.jetbrains.plugins.terminal"
-        )
-    )
+// The IDE supplies Kotlin; do not package older transitive runtimes from OkHttp/Okio.
+configurations.implementation {
+    exclude(group = "org.jetbrains.kotlin")
 }
+
+// A single modern release line; older IDEs must use an earlier plugin release.
+intellijPlatform {
+    projectName.set("ZooCode")
+    // The plugin contributes no settings Configurable to index.
+    buildSearchableOptions.set(false)
+    pluginConfiguration {
+        version.set(properties("pluginVersion"))
+        ideaVersion {
+            sinceBuild.set(properties("pluginSinceBuild"))
+            untilBuild.set(properties("pluginUntilBuild"))
+        }
+    }
+    pluginVerification {
+        failureLevel.set(listOf(
+            VerifyPluginTask.FailureLevel.COMPATIBILITY_PROBLEMS,
+            VerifyPluginTask.FailureLevel.INVALID_PLUGIN,
+            VerifyPluginTask.FailureLevel.INTERNAL_API_USAGES,
+        ))
+        verificationReportsDirectory.set(layout.dir(
+            providers.gradleProperty("verifierReportsDir").map { file(it) }
+                .orElse(layout.buildDirectory.dir("reports/pluginVerifier").map { it.asFile })
+        ))
+        ides {
+            val localIde = providers.gradleProperty("verifierLocalIde").orNull
+            // The dependency helper otherwise resolves relative paths from the
+            // Gradle daemon's working directory, not this project directory.
+            if (localIde != null) local(file(localIde).absolutePath)
+            else create {
+                val code = providers.gradleProperty("verifierType").orElse(properties("platformType")).get()
+                type.set(if (code == "IU") IntelliJPlatformType.IntellijIdea
+                    else IntelliJPlatformType.entries.single { it.code == code })
+                version = providers.gradleProperty("verifierVersion").orElse(properties("platformVersion")).get()
+                useInstaller = false
+            }
+        }
+    }
+}
+
+// Gradle 9 removed Project.exec; use the supported injected process service.
+abstract class ProcessServices @Inject constructor(val execOperations: ExecOperations)
+val processServices = objects.newInstance<ProcessServices>()
 
 tasks {
 
@@ -304,68 +356,22 @@ tasks {
     // Set the JVM compatibility versions
     withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
         dependsOn("generateConfigProperties")
-        kotlinOptions {
-            jvmTarget = "17"
+        compilerOptions {
+            jvmTarget.set(JvmTarget.JVM_21)
+            languageVersion.set(KotlinVersion.KOTLIN_2_2)
+            apiVersion.set(KotlinVersion.KOTLIN_2_2)
         }
     }
 
-    patchPluginXml {
-        version.set(properties("pluginVersion"))
-        sinceBuild.set(properties("pluginSinceBuild"))
-        untilBuild.set("")
-    }
-
-    // One binary must keep 233 support and stay compatible with the 2026.3 terminal
-    // changes. Verify against the newest supported platform; failures are limited to
-    // hard compatibility problems so deprecated-API notices do not hide them.
-    //
-    // The gradle-intellij 1.x task resolves ideVersions from release feeds only, and
-    // IC-263.5701.42 (idea263Build property) is an EAP build that no feed lists. CI
-    // (release.yml) downloads the exact build and passes it as
-    // -PverifierLocalIde=<unpacked IDE directory>. Local runs have two clear paths:
-    //   ./gradlew runPluginVerifier -PverifierLocalIde=<unpacked ideaIC-263.5701.42 dir>
-    //   ./gradlew runPluginVerifier -PverifierIdeVersion=IC-<release feed build>
-    runPluginVerifier {
-        // Verifier releases: https://repo1.maven.org/maven2/org/jetbrains/intellij/plugins/verifier-cli/
-        verifierVersion.set("1.410")
-        val idea263Build = providers.gradleProperty("idea263Build").orElse("263.5701.42")
-        val explicitVersions = providers.gradleProperty("verifierIdeVersion").orNull
-        ideVersions.set(listOf(explicitVersions ?: "IC-${idea263Build.get()}"))
-        failureLevel.set(
-            listOf(
-                RunPluginVerifierTask.FailureLevel.COMPATIBILITY_PROBLEMS,
-                RunPluginVerifierTask.FailureLevel.INVALID_PLUGIN
-            )
-        )
-        val localIde = providers.gradleProperty("verifierLocalIde").orNull
-        if (localIde != null) {
-            ideVersions.set(emptyList())
-            localPaths.set(listOf(file(localIde)))
-        } else if (explicitVersions == null) {
-            doFirst {
-                throw GradleException(
-                    "runPluginVerifier needs an IDE target. IC-${idea263Build.get()} is an EAP build that " +
-                        "gradle-intellij cannot resolve from release feeds. Download " +
-                        "ideaIC-${idea263Build.get()}-EAP-SNAPSHOT.zip, unpack it, and pass " +
-                        "-PverifierLocalIde=<unpacked directory> (this is what release.yml does for CI), " +
-                        "or verify a release feed build with -PverifierIdeVersion=IC-<version>.",
-                )
-            }
-        }
-    }
-
-    // Regression gate: a packaged method reference to LocalTerminalDirectRunner
-    // .createProcess(ShellStartupOptions) breaks the same binary on IntelliJ 2026.3,
-    // where that method returns java.lang.Process instead of PtyProcess, so a 2023.3
-    // call site does not resolve. The 2023.3 path and the 2026.3 path both start the
-    // process through TerminalInstance.startTerminalProcess.
+    // Regression gate: reject legacy terminal process calls and internal PTY APIs.
+    // The runner starts our process through TerminalInstance.startTerminalProcess.
     //
     // The packaged plugin jar inside the sandbox: instrumentation may rename it with
     // an "instrumented-" prefix, and patchPluginXml writes the release descriptor into
     // exactly this copy.
     fun packagedPluginJar(): File {
-        val archiveName = jar.get().archiveFileName.get()
-        val libDir = File(File(prepareSandbox.get().destinationDir, intellij.pluginName.get()), "lib")
+        val archiveName = project.tasks.named("composedJar", org.jetbrains.intellij.platform.gradle.tasks.ComposedJarTask::class.java).get().archiveFileName.get()
+        val libDir = File(File(prepareSandbox.get().destinationDir, "ZooCode"), "lib")
         val candidates = libDir.listFiles { file -> file.name.endsWith(archiveName) }
             ?: throw GradleException("Sandbox lib directory not found: $libDir")
         return candidates.firstOrNull { it.name.startsWith("instrumented-") }
@@ -375,7 +381,7 @@ tasks {
 
     // The scan delegates to smoke/Smoke263DispatchCheck.java --scan-jar so the banned
     // reference list and the constant-pool parsing live in one place. The checker is
-    // linked against the 233 platform jars already on the compile classpath; this task
+    // linked against the target platform jars already on the compile classpath; this task
     // never needs the 2026.3 IDE. The scan target is the instrumented jar in the
     // sandbox, the exact bytes that the Plugin Verifier checks and that the published
     // zip packages. The task first runs the checker --self-test, which feeds it
@@ -392,7 +398,7 @@ tasks {
         outputs.file(layout.buildDirectory.file("verification/packaged-bytecode.ok"))
         dependsOn(prepareSandbox)
         doLast {
-            project.exec {
+            processServices.execOperations.exec {
                 commandLine(
                     verificationJavaLauncher.get().executablePath.asFile.absolutePath,
                     "-cp",
@@ -402,7 +408,7 @@ tasks {
                 )
             }
             val pluginJar = packagedPluginJar()
-            project.exec {
+            processServices.execOperations.exec {
                 commandLine(
                     verificationJavaLauncher.get().executablePath.asFile.absolutePath,
                     "-cp",
@@ -428,25 +434,31 @@ tasks {
     // build's jediterm and pty4j.
     register("smoke263Dispatch") {
         group = "verification"
-        description = "Prove the 2026.3 createTtyConnector dispatch against an unpacked ideaIC 263.5701.42"
+        description = "Prove createTtyConnector dispatch and output forwarding against the selected verification IDE"
         val checker = layout.projectDirectory.file("smoke/Smoke263DispatchCheck.java")
-        val idea263Build = providers.gradleProperty("idea263Build").orElse("263.5701.42")
-        val ideDir = providers.gradleProperty("smokeLocalIde")
+        val idea263Build = providers.gradleProperty("idea263Build").orElse("263.7307.112")
+        val verificationIde = providers.provider { verifyPlugin.get().ides.singleFile.absolutePath }
+        val ideDir = (if (providers.gradleProperty("smokeVerifiedIde").orNull == "true") {
+            dependsOn(verifyPlugin)
+            verificationIde
+        } else providers.gradleProperty("smokeLocalIde"))
             .orElse(layout.buildDirectory.dir(idea263Build.map { "ideaIC-$it" }).map { it.asFile.absolutePath })
         // The checker reads the first jar as bytes and loads the other five. Track only
         // this jar set so unrelated files in the unpacked IDE cannot invalidate the task.
-        val ideJarPaths = listOf(
+        val ideJarPaths = ideDir.map { directory -> listOf(
             "plugins/terminal/lib/terminal.jar",
-            "lib/intellij.libraries.pty4j.jar",
+            if (File(directory, "lib/intellij.libraries.pty4j.jar").isFile)
+                "lib/intellij.libraries.pty4j.jar"
+            else "plugins/pty4j-plugin/lib/modules/intellij.libraries.pty4j.jar",
             "lib/intellij.libraries.jediterm.core.jar",
             "lib/intellij.libraries.jediterm.ui.jar",
             "lib/util-8.jar",
             "lib/util_rt.jar",
-        )
+        ) }
         inputs.files(prepareSandbox.map { it.destinationDir })
         inputs.file(checker)
-        inputs.files(ideDir.map { ideDirectory -> ideJarPaths.map { File(ideDirectory, it) } })
-        inputs.property("idea263Build", idea263Build)
+        inputs.files(ideDir.zip(ideJarPaths) { directory, paths -> paths.map { File(directory, it) } })
+        inputs.property("selectedIde", ideDir)
         outputs.file(layout.buildDirectory.file("verification/smoke263-dispatch.ok"))
         dependsOn(prepareSandbox)
         doLast {
@@ -456,10 +468,10 @@ tasks {
                     "ideaIC-${idea263Build.get()}-EAP-SNAPSHOT.zip there or pass " +
                     "-PsmokeLocalIde=<directory>."
             }
-            val ideJars = ideJarPaths.map { ideDirectory.resolve(it) }
+            val ideJars = ideJarPaths.get().map { ideDirectory.resolve(it) }
             ideJars.forEach {
                 check(it.isFile) {
-                    "Expected 2026.3 IDE jar missing: $it. The ideaIC layout changed and the " +
+                    "Expected verification IDE jar missing: $it. The IDE layout changed and the " +
                         "smoke checker needs updated jar locations."
                 }
             }
@@ -471,7 +483,7 @@ tasks {
             val terminalJar = ideJars.first()
             val pluginJar = packagedPluginJar()
             val classpath = ideJars.drop(1) + pluginJar
-            project.exec {
+            processServices.execOperations.exec {
                 commandLine(
                     verificationJavaLauncher.get().executablePath.asFile.absolutePath,
                     "-cp",
@@ -482,7 +494,7 @@ tasks {
                 )
             }
             val smokeMarker = layout.buildDirectory.file("verification/smoke263-dispatch.ok").get().asFile
-            smokeMarker.writeText("${idea263Build.get()} ${pluginJar.absolutePath}")
+            smokeMarker.writeText("${ideDirectory.absolutePath} ${pluginJar.absolutePath}")
         }
     }
 

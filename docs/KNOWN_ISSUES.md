@@ -4,7 +4,50 @@ This document records the known issues, limitations, and solutions for the Zoo C
 
 The 3.96.0 Marketplace API warnings and JCEF compatibility work are tracked in
 [issue #16](https://github.com/Zoo-Code-Org/Zoo-Code-Jetbrains/issues/16).
-Release verification and the internal/experimental editor API migration remain open.
+The additional reupload warnings are tracked in
+[issue #18](https://github.com/Zoo-Code-Org/Zoo-Code-Jetbrains/issues/18).
+
+### API migration and supported versions
+
+The current branch targets IntelliJ Platform **261.27258.136 through
+263.*** (2026.1.5.1 through the 2026.3 branch), with Java 21. Older IDEs must use
+an earlier plugin release. The maintainer approved raising the minimum on 2026-11-12 to remove the
+internal editor-opening dependency without maintaining separate release lines.
+The [compatibility decision](validation/editor-api-migration.md#supported-baseline-decision)
+records the released 233 API and version-specific build options considered.
+
+Normal-file opens and preserving diff opens now use public `NavigationRequest`
+and `NavigationService` APIs with an explicit focus request. A negative offset
+preserves the caret and permits virtual diff files. The platform handles
+suspending editor loading internally; the plugin does not reference
+`FileEditorOpenOptions` or the internal `FileEditorManagerEx.openFile` overload.
+There is no reflective internal API fallback. Deliberate diff opens retain the
+diff helper path.
+
+The build uses IntelliJ Platform Gradle Plugin 2.x and Java/Kotlin 21 toolchains.
+PR and release verification fail on internal API usages as well as binary
+compatibility problems. The supported range is bounded to `263.*` pending verification of later IDE branches.
+
+The proxy settings and terminal customizer migrations in #18 remain separate
+unfinished work. Raising the baseline makes their modern replacements available;
+it does not itself eliminate those deprecations. The old process-based terminal
+runner overrides were removed in favor of the startup-options connector hook.
+
+See JetBrains' [public navigation API](https://github.com/JetBrains/intellij-community/blob/idea/261.27258.136/platform/platform-api/src/com/intellij/platform/ide/navigation/NavigationService.kt),
+[internal API migration guidance](https://plugins.jetbrains.com/docs/intellij/api-internal.html),
+and [multi-version guidance](https://plugins.jetbrains.com/docs/intellij/build-number-ranges.html#targeting-multiple-ide-versions).
+
+Historical verification on 2026-11-09 used the previous 2023.3-based ZIP with
+Plugin Verifier 1.410 against IC-233.11799.241 and IC-263.5701.42. Both reported
+compatible; the latter still reported 3 internal, 9 scheduled-for-removal, and
+4 deprecated usages. Those reports do not validate the current migration.
+Current validation and archived historical records are recorded in
+[the editor API migration report](validation/editor-api-migration.md).
+The final candidate reports zero internal usages on 2026.1.5.1, WebStorm
+2026.2.1 and the pinned 2026.3 build. Native IDEA typing/file/diff fixtures passed
+at both support boundaries. The local WebStorm desktop run is blocked by license
+activation; its issue-specific CI regression remains in place. Other API warnings
+and the extension-provider fixture failures are still open.
 
 ## 1. JCEF Related Issues
 

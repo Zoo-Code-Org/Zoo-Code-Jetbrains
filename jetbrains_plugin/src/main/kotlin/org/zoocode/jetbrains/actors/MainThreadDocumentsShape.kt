@@ -98,7 +98,7 @@ class MainThreadDocuments(var project: Project) : MainThreadDocumentsShape {
         val uri = createURI(map)
         logger.info("tryOpenDocument : ${uri.path}")
 
-        val file = File(uri.path)
+        val file = File(uri.fsPath)
         val vfs = LocalFileSystem.getInstance()
         if (!file.exists()) {
             file.parentFile.mkdirs()
