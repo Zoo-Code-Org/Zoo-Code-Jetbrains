@@ -27,6 +27,12 @@ on:
 permissions:
   contents: read
 
+env:
+  # Reproduce the release under investigation with the current Kotlin changes.
+  # The build job packages this extension version. The test steps check that the
+  # plugin ZIP really contains it, because the ZIP name does not set it.
+  ZOO_EXTENSION_VERSION: "3.96.0"
+
 concurrency:
   # Skipped label events must not replace a pending build for this PR.
   group: windows-chat-focus-${{ github.ref }}-${{ github.event.action == 'labeled' && github.event.label.name != 'live-solheim' && 'ignored-label' || 'validation' }}
@@ -40,8 +46,6 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
-      # Reproduce the release under investigation with the current Kotlin changes.
-      ZOO_EXTENSION_VERSION: "3.96.0"
       # This job packages the plugin; headful tests use the IDE's bundled JCEF.
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
     steps:
@@ -82,10 +86,10 @@ jobs:
           if-no-files-found: error
 
   windows-e2e:
-    name: Native typing and streaming chat (IDEA ${{ matrix.ide }})
+    name: Native typing, streaming chat, and shared history (IDEA ${{ matrix.ide }})
     needs: build
     runs-on: windows-2022
-    timeout-minutes: 30
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -104,8 +108,10 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - name: Validate fixture HTTP behavior on Windows
-        run: python -m unittest discover -s jetbrains_plugin/scripts/ui-harness -p test_streaming_fixture.py -v
+      - name: Validate fixture HTTP behavior and the history store checker on Windows
+        run: |
+          python -m unittest discover -s jetbrains_plugin/scripts/ui-harness -p test_streaming_fixture.py -v
+          python -m unittest discover -s jetbrains_plugin/scripts/ui-harness -p test_check_history_store.py -v
       - uses: actions/download-artifact@v4
         with:
           name: chat-focus-plugin
@@ -138,7 +144,21 @@ jobs:
           if ($plugins.Count -ne 1) { throw 'Expected exactly one plugin distribution' }
           & ./jetbrains_plugin/scripts/ui-harness/run-windows.ps1 `
             -IdeDir $env:FOCUS_IDE_DIR -PluginZip $plugins[0].FullName `
+            -ExpectExtensionVersion $env:ZOO_EXTENSION_VERSION `
             -EvidenceDir "$env:GITHUB_WORKSPACE/focus-evidence"
+      # Issue #6. Two IDEs share ~/.zoo-code. Each one runs a parent task that
+      # delegates to a subtask. The step fails if the shared history store has a
+      # shared index file, invalid items, wrong parent/child links, a subtask view
+      # that flips back, or an invalid status transition in the IDE logs.
+      - name: Run two IDEs with parent tasks and subtasks against one history store
+        if: ${{ !cancelled() }}
+        run: |
+          $plugins = @(Get-ChildItem focus-plugin -Filter *.zip)
+          if ($plugins.Count -ne 1) { throw 'Expected exactly one plugin distribution' }
+          & ./jetbrains_plugin/scripts/ui-harness/run-windows.ps1 -HistoryRace `
+            -IdeDir $env:FOCUS_IDE_DIR -PluginZip $plugins[0].FullName `
+            -ExpectExtensionVersion $env:ZOO_EXTENSION_VERSION `
+            -EvidenceDir "$env:GITHUB_WORKSPACE/history-evidence" -DeadlineSeconds 900
       - name: Upload focus traces, screenshots, and run identity
         if: always()
         uses: actions/upload-artifact@v4
@@ -146,6 +166,13 @@ jobs:
           name: windows-chat-focus-${{ matrix.ide }}-${{ github.sha }}
           path: focus-evidence/
           if-no-files-found: error
+      - name: Upload shared history evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-history-race-${{ matrix.ide }}-${{ github.sha }}
+          path: history-evidence/
+          if-no-files-found: warn
 
   live-solheim:
     name: Live Solheim terminal and diff focus (WebStorm 2026.2.1)
@@ -201,6 +228,7 @@ jobs:
               $env:SOLHEIM_API_KEY = $liveKey
               & ./jetbrains_plugin/scripts/ui-harness/run-windows.ps1 `
                 -IdeDir $env:FOCUS_IDE_DIR -PluginZip $plugins[0].FullName `
+                -ExpectExtensionVersion $env:ZOO_EXTENSION_VERSION `
                 -Provider solheim -DeadlineSeconds 780 -RequireWindows11:($env:REQUIRE_WINDOWS11 -eq 'true') `
                 -EvidenceDir "$env:GITHUB_WORKSPACE/live-evidence/run-$iteration"
             }
