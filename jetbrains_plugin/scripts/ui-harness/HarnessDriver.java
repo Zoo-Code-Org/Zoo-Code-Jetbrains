@@ -49,6 +49,10 @@ public final class HarnessDriver implements AppLifecycleListener {
     private final java.util.Set<String> approvedCommands = new java.util.HashSet<>();
     private final boolean fixtureMode = Boolean.getBoolean("zoo.harness.fixture");
     private final boolean diffStress = Boolean.getBoolean("zoo.harness.diffStress");
+    // Issue #6: two IDEs share one history store. This mode submits one parent task that
+    // delegates to a subtask, then waits for the parent to resume. It does no focus checks.
+    private final boolean historyRace = Boolean.getBoolean("zoo.harness.historyRace");
+    private final String historyTag = System.getProperty("zoo.harness.historyTag", "A");
     private final boolean windowsLive = !fixtureMode && System.getProperty("os.name", "").startsWith("Windows");
 
     private String windowsCommand(String step) {
@@ -248,7 +252,7 @@ public final class HarnessDriver implements AppLifecycleListener {
     // Manual provider-backed battery: real React textarea, real extension tools.
     private JsonObject realSnapshot(Object webview, AtomicReference<String> title) throws Exception {
         int id=++realSequence;
-        String script="(()=>{const snapshot=JSON.stringify((()=>{let e=[...document.querySelectorAll('textarea')].find(x=>x.offsetWidth&&x.offsetHeight);let r=e&&e.getBoundingClientRect();let z=window.__focusE2E||{};let m=z.messages||[];let last=m[m.length-1]||{};return {snapshot:"+id+",input:!!e,value:e?e.value:null,active:e===document.activeElement,windowFocused:document.hasFocus(),disabled:e?e.disabled:null,rect:r?{x:r.x,y:r.y,w:r.width,h:r.height}:null,messages:m.length,events:z.events||0,partial:z.partial||0,lastAsk:last.ask||null,lastTs:last.ts||null,lastText:typeof last.text==='string'?last.text.slice(0,300):null,lastSay:last.say||null,lastPartial:!!last.partial,provider:z.provider||null,body:document.body.innerText.slice(-1200)};})());console.log('ZFE2E:'+snapshot);document.title='ZFE2E:'+snapshot;})();";
+        String script="(()=>{const snapshot=JSON.stringify((()=>{let e=[...document.querySelectorAll('textarea')].find(x=>x.offsetWidth&&x.offsetHeight);let r=e&&e.getBoundingClientRect();let z=window.__focusE2E||{};let m=z.messages||[];let last=m[m.length-1]||{};return {snapshot:"+id+",input:!!e,value:e?e.value:null,active:e===document.activeElement,windowFocused:document.hasFocus(),disabled:e?e.disabled:null,rect:r?{x:r.x,y:r.y,w:r.width,h:r.height}:null,messages:m.length,events:z.events||0,partial:z.partial||0,taskId:z.taskId||null,tasks:z.tasks||[],lastAsk:last.ask||null,lastTs:last.ts||null,lastText:typeof last.text==='string'?last.text.slice(0,300):null,lastSay:last.say||null,lastPartial:!!last.partial,provider:z.provider||null,body:document.body.innerText.slice(-1200)};})());console.log('ZFE2E:'+snapshot);document.title='ZFE2E:'+snapshot;})();";
         runOnEdt(() -> invoke(webview, "executeJavaScript", script));
         long resend=System.currentTimeMillis()+1000;
         long deadline=System.currentTimeMillis()+30000;
@@ -318,7 +322,7 @@ public final class HarnessDriver implements AppLifecycleListener {
         if (!addTitleHandler(browser, invoke(browser, "getCefBrowser"), title)) {
             throw new IllegalStateException("Cannot register JCEF snapshot handler; see IDE log for cause");
         }
-        invoke(webview, "executeJavaScript", "window.__focusE2E={messages:[],events:0,partial:0};window.addEventListener('message',e=>{let d=e.data,z=window.__focusE2E;if(!d)return;z.events++;if(d.type==='state'&&d.state){if(d.state.clineMessages)z.messages=d.state.clineMessages.slice();z.provider=d.state.apiConfiguration&&d.state.apiConfiguration.apiProvider;}if(d.type==='messageUpdated'||d.type==='partialMessage'){let m=d.clineMessage||d.partialMessage;if(m){if(m.partial)z.partial++;let i=z.messages.findIndex(x=>x.ts===m.ts);if(i>=0)z.messages[i]=m;else z.messages.push(m);}}});");
+        invoke(webview, "executeJavaScript", "window.__focusE2E={messages:[],events:0,partial:0};window.addEventListener('message',e=>{let d=e.data,z=window.__focusE2E;if(!d)return;z.events++;if(d.type==='state'&&d.state){if(d.state.clineMessages)z.messages=d.state.clineMessages.slice();z.taskId=d.state.currentTaskItem?d.state.currentTaskItem.id:null;(z.tasks=z.tasks||[]);if(z.taskId&&z.tasks[z.tasks.length-1]!==z.taskId)z.tasks.push(z.taskId);z.provider=d.state.apiConfiguration&&d.state.apiConfiguration.apiProvider;}if(d.type==='messageUpdated'||d.type==='partialMessage'){let m=d.clineMessage||d.partialMessage;if(m){if(m.partial)z.partial++;let i=z.messages.findIndex(x=>x.ts===m.ts);if(i>=0)z.messages[i]=m;else z.messages.push(m);}}});");
         invoke(webview,"executeJavaScript","window.__focusNodeSeq=0;function e2eNode(e){if(!e)return null;if(!e.__e2eid)e.__e2eid=++window.__focusNodeSeq;return e.tagName+'@'+e.__e2eid;}for(let kind of ['keydown','input','focusin','focusout'])document.addEventListener(kind,e=>{if(kind==='keydown'&&!['x','y'].includes(e.key))return;console.info('E2EKEY:'+JSON.stringify({kind,ts:Date.now(),key:e.key||null,mod:e.ctrlKey||e.altKey||e.metaKey||false,node:e2eNode(e.target),active:e2eNode(document.activeElement),hasFocus:document.hasFocus(),length:typeof e.target.value==='string'?e.target.value.length:null}));},true);for(let kind of ['focus','blur'])window.addEventListener(kind,e=>console.info('E2EWINDOW:'+JSON.stringify({kind,ts:Date.now(),active:e2eNode(document.activeElement),hasFocus:document.hasFocus()})),true);");
         realSend(webview, "{\"type\":\"webviewDidLaunch\"}");
         realSend(webview, "{\"type\":\"mode\",\"text\":\"code\"}");
@@ -335,6 +339,7 @@ public final class HarnessDriver implements AppLifecycleListener {
         realSend(webview, config.toString());
         realSend(webview, "{\"type\":\"updateSettings\",\"updatedSettings\":{\"autoApprovalEnabled\":true,\"alwaysAllowReadOnly\":true,\"alwaysAllowWrite\":true,\"alwaysAllowExecute\":true,\"allowedCommands\":[\"printf\",\"sleep\",\"cat\",\"pwd\"],\"terminalShellIntegrationDisabled\":false,\"destructiveCommandGuardEnabled\":false,\"maxRequests\":20,\"telemetrySetting\":\"disabled\"}}");
         if (!fixtureMode) realSend(webview, "{\"type\":\"updateSettings\",\"updatedSettings\":{\"alwaysAllowExecute\":false}}");
+        if (historyRace) realSend(webview, "{\"type\":\"updateSettings\",\"updatedSettings\":{\"alwaysAllowSubtasks\":true}}");
         realSend(webview, "{\"type\":\"didShowAnnouncement\"}");
         invoke(webview, "executeJavaScript", "[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Close')?.click();");
         JsonObject snap = null;
@@ -385,7 +390,7 @@ public final class HarnessDriver implements AppLifecycleListener {
             Thread.sleep(300);
         }
         Toolkit.getDefaultToolkit().getSystemClipboard().setContents(
-            new java.awt.datatransfer.StringSelection(fixtureMode ? "Stream the fixture response and finish with attempt_completion." : windowsLive ? "Use tools in this throwaway Windows workspace. Run execute_command with exactly: " + windowsCommand("first") + ". Read src/Main.java, then use apply_diff to replace throwaway with solheim_e2e. Run execute_command with exactly: " + windowsCommand("second") + ". Do not edit .focus-ci or files outside this workspace. Use only execute_command, read_file, apply_diff, and attempt_completion for this task. Do not create or update a todo list. Briefly explain each step and finish with attempt_completion. Do not ask questions." : "Use tools in this throwaway workspace: execute_command printf SOLHEIM_FIRST; sleep 5. Read src/Main.java, then apply_diff replacing throwaway with solheim_e2e. Execute printf SOLHEIM_SECOND; sleep 5; cat src/Main.java. No files outside this workspace. Use only execute_command, read_file, apply_diff, and attempt_completion for this task. Do not create or update a todo list. Briefly explain each step and finish with attempt_completion. Do not ask questions."),null);
+            new java.awt.datatransfer.StringSelection(historyRace ? "HISTORY_RACE_PARENT " + historyTag + " delegate one subtask, then finish." : fixtureMode ? "Stream the fixture response and finish with attempt_completion." : windowsLive ? "Use tools in this throwaway Windows workspace. Run execute_command with exactly: " + windowsCommand("first") + ". Read src/Main.java, then use apply_diff to replace throwaway with solheim_e2e. Run execute_command with exactly: " + windowsCommand("second") + ". Do not edit .focus-ci or files outside this workspace. Use only execute_command, read_file, apply_diff, and attempt_completion for this task. Do not create or update a todo list. Briefly explain each step and finish with attempt_completion. Do not ask questions." : "Use tools in this throwaway workspace: execute_command printf SOLHEIM_FIRST; sleep 5. Read src/Main.java, then apply_diff replacing throwaway with solheim_e2e. Execute printf SOLHEIM_SECOND; sleep 5; cat src/Main.java. No files outside this workspace. Use only execute_command, read_file, apply_diff, and attempt_completion for this task. Do not create or update a todo list. Briefly explain each step and finish with attempt_completion. Do not ask questions."),null);
         Robot robot = new Robot();
         robot.setAutoDelay(90);
         robot.keyPress(KeyEvent.VK_CONTROL); robot.keyPress(KeyEvent.VK_V);
@@ -398,6 +403,7 @@ public final class HarnessDriver implements AppLifecycleListener {
         snap = realSnapshot(webview,title);
         if (!snap.get("value").isJsonNull() && !snap.get("value").getAsString().isEmpty()) { record("P_afterSubmit",snap); fail("realSubmitFailed","Enter did not submit the real chat input");return; }
         if (snap.get("messages").getAsInt()==0) { record("P_afterSubmit",snap); fail("realTaskMissing","No task appeared after submitting prompt");return; }
+        if (historyRace) { waitForHistoryRace(webview, title); return; }
         // Establish a single focus point before tools run; subsequent sampling never refocuses.
         clickInBrowser(browser,snap.getAsJsonObject("rect"));
         record("P_beforeDraftTyping",realSnapshot(webview,title));
@@ -501,6 +507,45 @@ public final class HarnessDriver implements AppLifecycleListener {
         record("providerMode",fixtureMode ? "local-streaming-fixture" : "live-solheim");
         screenshot("p-real-conversation");
         finish(fixtureMode ? "testP-streaming-fixture" : "testP-real-solheim-conversation", firstCompleted&&completed&&commandsCovered&&typingHealthy&&focusHealthy&&firstStreamed&&followupStreamed&&historyGrew&&fixtureChanged?"PASS":"FAIL-REAL-CONVERSATION");
+    }
+
+    /**
+     * Waits until the parent task resumes and completes after its subtask. The webview shows
+     * one task at a time. The expected task order is parent, child, parent. A fourth change
+     * of task means the view flipped back during the subtask.
+     */
+    private void waitForHistoryRace(Object webview, AtomicReference<String> title) throws Exception {
+        long deadline = System.currentTimeMillis() + 420_000;
+        List<String> sequence = new ArrayList<>();
+        while (System.currentTimeMillis() < deadline) {
+            JsonObject snap = realSnapshot(webview, title);
+            // The page records every task id in arrival order. Polling alone can miss the
+            // parent, because a delegation can finish before the first poll.
+            List<String> seen = new ArrayList<>();
+            snap.getAsJsonArray("tasks").forEach(id -> seen.add(id.getAsString()));
+            if (!seen.equals(sequence)) {
+                sequence = seen;
+                record("H_taskSequence_" + sequence.size(), sequence);
+            }
+            String ask = snap.get("lastAsk").isJsonNull() ? "" : snap.get("lastAsk").getAsString();
+            if (!answerCommandAsk(webview, snap, ask)) return;
+            if (sequence.size() > 3) {
+                fail("subtaskViewFlipped", "Task view changed " + sequence.size() + " times: " + sequence);
+                return;
+            }
+            String current = snap.get("taskId").isJsonNull() ? null : snap.get("taskId").getAsString();
+            boolean done = sequence.size() == 3 && sequence.get(2).equals(sequence.get(0))
+                    && sequence.get(0).equals(current) && "completion_result".equals(ask)
+                    && !snap.get("lastPartial").getAsBoolean();
+            if (done) {
+                // Give the extension time to persist the final history items.
+                Thread.sleep(5_000);
+                finish("testH-history-race-" + historyTag, "PASS");
+                return;
+            }
+            Thread.sleep(1_000);
+        }
+        fail("historyRaceTimeout", "Parent did not resume after its subtask; task order " + sequence);
     }
 
     private void clickInBrowser(Object jbCefBrowser, JsonObject rect) throws Exception {

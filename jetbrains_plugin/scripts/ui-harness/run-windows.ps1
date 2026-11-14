@@ -6,7 +6,12 @@ param(
     [Parameter(Mandatory = $true)][string]$EvidenceDir,
     [ValidateRange(60, 1800)][int]$DeadlineSeconds = 600,
     [ValidateSet('fixture', 'solheim')][string]$Provider = 'fixture',
-    [switch]$RequireWindows11
+    [switch]$RequireWindows11,
+    # Fail when the Zoo Code extension inside the plugin ZIP has a different version.
+    # The ZIP name does not set that version.
+    [string]$ExpectExtensionVersion,
+    # Issue #6: run two IDEs against one history store, each with a parent task and a subtask.
+    [switch]$HistoryRace
 )
 $ErrorActionPreference = 'Stop'
 $IdeDir = (Resolve-Path $IdeDir).Path
@@ -17,8 +22,10 @@ if (Test-Path (Join-Path $EvidenceDir 'status.txt')) { throw 'Use a fresh eviden
 $runDir = Join-Path ([IO.Path]::GetTempPath()) ('zoo-focus-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory $runDir | Out-Null
 $ideProcess = $null
+$instances = @{}
 $fixtureProcess = $null
 $live = $Provider -eq 'solheim'
+if ($HistoryRace -and $live) { throw 'The history race test uses only the local fixture provider.' }
 $originalRelayToken = $env:SOLHEIM_RELAY_TOKEN
 $originalKeyFile = $env:SOLHEIM_KEY_FILE
 $originalProxyLog = $env:SOLHEIM_PROXY_LOG
@@ -92,6 +99,12 @@ try {
     if (-not (Test-Path "$plugins/ZooCode/runtime/extension.js")) {
         throw 'Distribution must contain the release extension-host runtime; build with debugMode=release.'
     }
+    $extensionVersion = (Get-Content "$plugins/ZooCode/zoo-code/package.json" -Raw | ConvertFrom-Json).version
+    Set-Content (Join-Path $EvidenceDir 'extension-version.txt') $extensionVersion
+    Write-Output "Bundled Zoo Code extension version: $extensionVersion"
+    if ($ExpectExtensionVersion -and $extensionVersion -ne $ExpectExtensionVersion) {
+        throw "Plugin ZIP bundles Zoo Code extension $extensionVersion, expected $ExpectExtensionVersion."
+    }
     $project = Join-Path $runDir 'workspace'
     New-Item -ItemType Directory -Force "$project/src" | Out-Null
     'public class Main { public static void main(String[] args) { System.out.println("throwaway"); } }' | Set-Content "$project/src/Main.java"
@@ -142,6 +155,7 @@ idea.plugins.path=$profilePath/plugins
     # Keep the provider alive without creating a foreground test obstacle.
     $providerScript = "$PSScriptRoot/streaming_fixture.py"
     $providerArguments = @("`"$providerScript`"", '--log', "`"$EvidenceDir/provider.jsonl`"")
+    if ($HistoryRace) { $providerArguments += @('--scenario', 'history-race', '--chunks', '200') }
     $readyUri = 'http://127.0.0.1:19487/health'
     $readyHeaders = @{}
     if ($live) {
@@ -176,6 +190,89 @@ idea.plugins.path=$profilePath/plugins
         Remove-Item $env:SOLHEIM_KEY_FILE -Force
         $env:SOLHEIM_KEY_FILE = $null
         $env:SOLHEIM_PROXY_LOG = $null
+    }
+    if ($HistoryRace) {
+        # Both IDEs keep their own config, system, and log paths. They share the plugins
+        # directory, the home directory, and so ~/.zoo-code/globalStorage, as in issue #6.
+        $storage = Join-Path $env:USERPROFILE '.zoo-code/globalStorage'
+        $since = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() - 2
+        $product = Get-Content "$IdeDir/product-info.json" -Raw | ConvertFrom-Json
+        $launcher = if ($product.productCode -eq 'WS') { 'webstorm64.exe' } else { 'idea64.exe' }
+        function Start-RaceIde([string]$tag) {
+            $profileDir = Join-Path $runDir "ide-$tag"
+            $workspace = Join-Path $runDir "workspace-$tag"
+            New-Item -ItemType Directory -Force "$workspace/src" | Out-Null
+            Copy-Item "$project/src/Main.java" "$workspace/src/Main.java"
+            $evidence = Join-Path $EvidenceDir $tag
+            New-Item -ItemType Directory -Force $evidence | Out-Null
+            $profilePath = $profileDir.Replace('\', '/')
+            $pluginsPath = $plugins.Replace('\', '/')
+            $propertiesFile = Join-Path $runDir "idea-$tag.properties"
+            @"
+idea.config.path=$profilePath/config
+idea.system.path=$profilePath/system
+idea.log.path=$profilePath/log
+idea.plugins.path=$pluginsPath
+"@ | Set-Content $propertiesFile
+            $optionsFile = Join-Path $runDir "idea-$tag.vmoptions"
+            @"
+-Xmx1024m
+-XX:ActiveProcessorCount=2
+-Didea.trust.all.projects=true
+-Didea.initially.ask.config=false
+-Djb.consents.confirmation.enabled=false
+-Djb.privacy.policy.text=<!--999.999-->
+-Dide.show.tips.on.startup.default.value=false
+-Dzoo.harness.mode=P
+-Dzoo.harness.fixture=true
+-Dzoo.harness.historyRace=true
+-Dzoo.harness.historyTag=$tag
+-Dzoo.harness.evidence=$($evidence.Replace('\', '/'))
+"@ | Set-Content $optionsFile
+            $env:IDEA_PROPERTIES = $propertiesFile
+            $env:IDEA_VM_OPTIONS = $optionsFile
+            $env:IDEA64_VM_OPTIONS = $optionsFile
+            $env:WEBIDE_PROPERTIES = $propertiesFile
+            $env:WEBIDE_VM_OPTIONS = $optionsFile
+            $process = Start-Process -FilePath "$IdeDir/bin/$launcher" -ArgumentList "`"$workspace`"" -PassThru `
+                -RedirectStandardOutput "$evidence/launcher-stdout.log" -RedirectStandardError "$evidence/launcher-stderr.log"
+            $instances[$tag] = [pscustomobject]@{ Process = $process; Evidence = $evidence; Log = "$profileDir/log" }
+        }
+        function Wait-RaceIde([string]$tag, [scriptblock]$until, [string]$what, [int]$seconds) {
+            $instance = $instances[$tag]
+            $limit = [DateTime]::UtcNow.AddSeconds($seconds)
+            while ([DateTime]::UtcNow -lt $limit) {
+                if (& $until $instance) { return }
+                if ($instance.Process.HasExited) { throw "IDE $tag exited before ${what}: $($instance.Process.ExitCode)" }
+                Start-Sleep -Seconds 1
+            }
+            throw "IDE $tag did not reach $what within $seconds seconds"
+        }
+        # The driver types and pastes with a real keyboard. Two IDEs doing that together would
+        # steal each other's input. Start B only after A has submitted. A then waits at the
+        # provider barrier until B submits, so both delegations start together.
+        Start-RaceIde 'A'
+        Wait-RaceIde 'A' { param($i) (Test-Path "$($i.Evidence)/progress.log") -and
+            (Select-String -Path "$($i.Evidence)/progress.log" -Pattern 'P-real-conversation-submitted' -Quiet) } 'its first submit' 300
+        Start-RaceIde 'B'
+        foreach ($tag in 'A', 'B') {
+            Wait-RaceIde $tag { param($i) Test-Path "$($i.Evidence)/status.txt" } 'a result' $DeadlineSeconds
+            $status = (Get-Content "$($instances[$tag].Evidence)/status.txt" -Raw).Trim()
+            if ($status -ne 'PASS') { throw "History race IDE ${tag}: $status. See $tag/evidence.json and $tag/progress.log" }
+        }
+        # Keep a copy of the store that this run wrote, for the evidence archive.
+        $copy = Join-Path $EvidenceDir 'history-store'
+        New-Item -ItemType Directory -Force $copy | Out-Null
+        Get-ChildItem $storage -Recurse -Filter history_item.json -ErrorAction SilentlyContinue |
+            Where-Object { [DateTimeOffset]$_.LastWriteTimeUtc -ge [DateTimeOffset]::FromUnixTimeSeconds($since) } |
+            ForEach-Object { Copy-Item $_.FullName (Join-Path $copy ($_.Directory.Name + '.json')) }
+        $arguments = @("$PSScriptRoot/check_history_store.py", '--storage', $storage, '--since', $since,
+            '--provider-log', "$EvidenceDir/provider.jsonl", '--report', "$EvidenceDir/history-check.json")
+        foreach ($tag in 'A', 'B') { $arguments += @('--ide-log', "$($instances[$tag].Log)/idea.log") }
+        & python @arguments
+        if ($LASTEXITCODE -ne 0) { throw 'The shared history store failed the concurrency check; see history-check.json' }
+        Write-Output 'PASS: two IDEs, parent tasks with subtasks, one shared history store'
+        return
     }
     $product = Get-Content "$IdeDir/product-info.json" -Raw | ConvertFrom-Json
     $launcher = if ($product.productCode -eq 'WS') { 'webstorm64.exe' } else { 'idea64.exe' }
@@ -252,6 +349,12 @@ idea.plugins.path=$profilePath/plugins
     if ($ideProcess -and -not $ideProcess.HasExited) { & taskkill.exe /PID $ideProcess.Id /T /F | Out-Null }
     if ($fixtureProcess -and -not $fixtureProcess.HasExited) { Stop-Process -Id $fixtureProcess.Id -Force -ErrorAction SilentlyContinue }
     if (Test-Path "$runDir/log") { Copy-Item "$runDir/log" "$EvidenceDir/ide-log" -Recurse -Force }
+    foreach ($tag in 'A', 'B') {
+        if (Test-Path "$runDir/ide-$tag/log") { Copy-Item "$runDir/ide-$tag/log" "$EvidenceDir/ide-log-$tag" -Recurse -Force }
+    }
+    foreach ($instance in $instances.Values) {
+        if ($instance.Process -and -not $instance.Process.HasExited) { & taskkill.exe /PID $instance.Process.Id /T /F | Out-Null }
+    }
     $upstreamKey = $null
     $env:SOLHEIM_RELAY_TOKEN = $originalRelayToken
     $env:SOLHEIM_KEY_FILE = $originalKeyFile
