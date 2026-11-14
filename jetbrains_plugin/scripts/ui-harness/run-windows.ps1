@@ -248,12 +248,10 @@ idea.plugins.path=$pluginsPath
             }
             throw "IDE $tag did not reach $what within $seconds seconds"
         }
-        # The driver types and pastes with a real keyboard. Two IDEs doing that together would
-        # steal each other's input. Start B only after A has submitted. A then waits at the
-        # provider barrier until B submits, so both delegations start together.
+        # The driver starts each task with a webview message and uses no keyboard. A background
+        # IDE window gets no native focus on Windows, so keyboard input would fail for IDE B.
+        # A waits at the provider barrier until B submits, so both delegations start together.
         Start-RaceIde 'A'
-        Wait-RaceIde 'A' { param($i) (Test-Path "$($i.Evidence)/progress.log") -and
-            (Select-String -Path "$($i.Evidence)/progress.log" -Pattern 'P-real-conversation-submitted' -Quiet) } 'its first submit' 300
         Start-RaceIde 'B'
         foreach ($tag in 'A', 'B') {
             Wait-RaceIde $tag { param($i) Test-Path "$($i.Evidence)/status.txt" } 'a result' $DeadlineSeconds

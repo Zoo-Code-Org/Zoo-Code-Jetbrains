@@ -356,6 +356,21 @@ public final class HarnessDriver implements AppLifecycleListener {
         if (!Boolean.TRUE.equals(ready)) throw new IllegalStateException("Chat remained hidden during indexing");
         snap = realSnapshot(webview,title);
         screenshot("p-configured");
+        if (historyRace) {
+            // Start the task with a webview message, not the keyboard. Two IDEs run together,
+            // and a background IDE window does not get native focus on Windows.
+            realSend(webview, "{\"type\":\"newTask\",\"text\":\"HISTORY_RACE_PARENT " + historyTag
+                    + " delegate one subtask, then finish.\"}");
+            boolean started = false;
+            for (int i = 0; i < 60 && !started; i++) {
+                Thread.sleep(1000);
+                started = realSnapshot(webview, title).get("messages").getAsInt() > 0;
+            }
+            if (!started) { fail("realTaskMissing", "No task appeared after the newTask message"); return; }
+            mark("P-real-conversation-submitted");
+            waitForHistoryRace(webview, title);
+            return;
+        }
         if (diffStress) checkDeliberateEditorFocus(project);
         // Establish native focus before typing anything. A freshly mounted OSR
         // surface may paint after its DOM is ready. Setup clicks are bounded;
@@ -390,7 +405,7 @@ public final class HarnessDriver implements AppLifecycleListener {
             Thread.sleep(300);
         }
         Toolkit.getDefaultToolkit().getSystemClipboard().setContents(
-            new java.awt.datatransfer.StringSelection(historyRace ? "HISTORY_RACE_PARENT " + historyTag + " delegate one subtask, then finish." : fixtureMode ? "Stream the fixture response and finish with attempt_completion." : windowsLive ? "Use tools in this throwaway Windows workspace. Run execute_command with exactly: " + windowsCommand("first") + ". Read src/Main.java, then use apply_diff to replace throwaway with solheim_e2e. Run execute_command with exactly: " + windowsCommand("second") + ". Do not edit .focus-ci or files outside this workspace. Use only execute_command, read_file, apply_diff, and attempt_completion for this task. Do not create or update a todo list. Briefly explain each step and finish with attempt_completion. Do not ask questions." : "Use tools in this throwaway workspace: execute_command printf SOLHEIM_FIRST; sleep 5. Read src/Main.java, then apply_diff replacing throwaway with solheim_e2e. Execute printf SOLHEIM_SECOND; sleep 5; cat src/Main.java. No files outside this workspace. Use only execute_command, read_file, apply_diff, and attempt_completion for this task. Do not create or update a todo list. Briefly explain each step and finish with attempt_completion. Do not ask questions."),null);
+            new java.awt.datatransfer.StringSelection(fixtureMode ? "Stream the fixture response and finish with attempt_completion." : windowsLive ? "Use tools in this throwaway Windows workspace. Run execute_command with exactly: " + windowsCommand("first") + ". Read src/Main.java, then use apply_diff to replace throwaway with solheim_e2e. Run execute_command with exactly: " + windowsCommand("second") + ". Do not edit .focus-ci or files outside this workspace. Use only execute_command, read_file, apply_diff, and attempt_completion for this task. Do not create or update a todo list. Briefly explain each step and finish with attempt_completion. Do not ask questions." : "Use tools in this throwaway workspace: execute_command printf SOLHEIM_FIRST; sleep 5. Read src/Main.java, then apply_diff replacing throwaway with solheim_e2e. Execute printf SOLHEIM_SECOND; sleep 5; cat src/Main.java. No files outside this workspace. Use only execute_command, read_file, apply_diff, and attempt_completion for this task. Do not create or update a todo list. Briefly explain each step and finish with attempt_completion. Do not ask questions."),null);
         Robot robot = new Robot();
         robot.setAutoDelay(90);
         robot.keyPress(KeyEvent.VK_CONTROL); robot.keyPress(KeyEvent.VK_V);
@@ -403,7 +418,6 @@ public final class HarnessDriver implements AppLifecycleListener {
         snap = realSnapshot(webview,title);
         if (!snap.get("value").isJsonNull() && !snap.get("value").getAsString().isEmpty()) { record("P_afterSubmit",snap); fail("realSubmitFailed","Enter did not submit the real chat input");return; }
         if (snap.get("messages").getAsInt()==0) { record("P_afterSubmit",snap); fail("realTaskMissing","No task appeared after submitting prompt");return; }
-        if (historyRace) { waitForHistoryRace(webview, title); return; }
         // Establish a single focus point before tools run; subsequent sampling never refocuses.
         clickInBrowser(browser,snap.getAsJsonObject("rect"));
         record("P_beforeDraftTyping",realSnapshot(webview,title));

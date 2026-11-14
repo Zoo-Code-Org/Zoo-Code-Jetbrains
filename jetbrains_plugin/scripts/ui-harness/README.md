@@ -45,8 +45,9 @@ Record the exact ZIP, IDE version, and evidence directory when comparing builds.
 ## Shared history race test (issue #6)
 
 `run-windows.ps1 -HistoryRace` starts two IDEs with separate profiles and the same
-home directory, so both use one `~/.zoo-code/globalStorage`. Each IDE submits a
-parent task. The fixture makes the parent call `new_task`, holds both parents at a
+home directory, so both use one `~/.zoo-code/globalStorage`. Both IDEs start together.
+Each IDE starts a parent task with a webview `newTask` message. The test uses no keyboard,
+because a background IDE window gets no native focus on Windows. The fixture makes the parent call `new_task`, holds both parents at a
 barrier so the delegations overlap, streams both child tasks, and lets each parent
 resume and finish. `check_history_store.py` then checks the store:
 

@@ -163,34 +163,32 @@ wait_for() {
   echo "IDE $tag did not reach $what within ${seconds}s" >&2
   return 1
 }
-submitted() { grep -qs 'P-real-conversation-submitted' "$EVIDENCE/$1/progress.log"; }
 has_status() { [ -f "$EVIDENCE/$1/status.txt" ]; }
 
 declare -A IDE_PIDS
 SINCE=$(( $(date +%s) - 2 ))
 RESULT=FAIL
 
-# The driver pastes and types with a real keyboard. Start B only after A has submitted.
-# A then waits at the provider barrier until B submits, so both delegations start together.
+# The driver starts each task with a webview message and uses no keyboard, so both IDEs
+# can start together. A waits at the provider barrier until B submits, so both delegations
+# start together.
 start_ide A
-if wait_for A 'its first submit' 300 submitted A; then
-  start_ide B
-  ok=1
-  for tag in A B; do
-    wait_for "$tag" 'a result' "$DEADLINE" has_status "$tag" || { ok=0; break; }
-    status="$(cat "$EVIDENCE/$tag/status.txt")"
-    [ "$status" = PASS ] || { echo "IDE $tag result: $status (see $EVIDENCE/$tag/evidence.json)" >&2; ok=0; break; }
+start_ide B
+ok=1
+for tag in A B; do
+  wait_for "$tag" 'a result' "$DEADLINE" has_status "$tag" || { ok=0; break; }
+  status="$(cat "$EVIDENCE/$tag/status.txt")"
+  [ "$status" = PASS ] || { echo "IDE $tag result: $status (see $EVIDENCE/$tag/evidence.json)" >&2; ok=0; break; }
+done
+if [ "$ok" = 1 ]; then
+  mkdir -p "$EVIDENCE/history-store"
+  find "$STORAGE" -name history_item.json -newermt "@$SINCE" -print0 2>/dev/null | while IFS= read -r -d '' f; do
+    cp "$f" "$EVIDENCE/history-store/$(basename "$(dirname "$f")").json"
   done
-  if [ "$ok" = 1 ]; then
-    mkdir -p "$EVIDENCE/history-store"
-    find "$STORAGE" -name history_item.json -newermt "@$SINCE" -print0 2>/dev/null | while IFS= read -r -d '' f; do
-      cp "$f" "$EVIDENCE/history-store/$(basename "$(dirname "$f")").json"
-    done
-    if python3 "$SOURCE_DIR/check_history_store.py" --storage "$STORAGE" --since "$SINCE" \
-        --provider-log "$EVIDENCE/provider.jsonl" --report "$EVIDENCE/history-check.json" \
-        --ide-log "$H/cfg/A/log/idea.log" --ide-log "$H/cfg/B/log/idea.log"; then
-      RESULT=PASS
-    fi
+  if python3 "$SOURCE_DIR/check_history_store.py" --storage "$STORAGE" --since "$SINCE" \
+      --provider-log "$EVIDENCE/provider.jsonl" --report "$EVIDENCE/history-check.json" \
+      --ide-log "$H/cfg/A/log/idea.log" --ide-log "$H/cfg/B/log/idea.log"; then
+    RESULT=PASS
   fi
 fi
 
