@@ -63,12 +63,12 @@ order is parent, child, parent. The test counts task switches only. It does not 
 view that changes to the parent during the subtask and stays there until the parent resumes.
 
 The run uses the real user profile store, so the script refuses to start unless
-`GITHUB_ACTIONS` is `true`. The Windows CI step has a 60 minute job timeout and uploads
+`GITHUB_ACTIONS` is `true`. The Windows CI job has a 60 minute timeout and uploads
 the evidence as `windows-history-race-<ide>-<sha>`.
 
-`-ExpectExtensionVersion` (Windows) and `EXPECT_EXTENSION_VERSION` (`run-solheim.sh`) make a run
-fail when the Zoo Code extension in the plugin ZIP has another version. CI passes it to
-the chat focus, shared history, and live Solheim steps.
+`-ExpectExtensionVersion` (`run-windows.ps1`) makes a run fail when the Zoo Code extension
+in the plugin ZIP has another version. CI passes it to the chat focus, shared history,
+and live Solheim steps.
 
 `streaming_fixture.py` flags: `--port`, `--log` (required), `--scenario history-race`,
 `--chunks`, `--interval` (seconds between chunks), `--barrier` (parents to hold).

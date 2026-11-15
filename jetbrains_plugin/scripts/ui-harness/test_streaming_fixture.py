@@ -122,9 +122,10 @@ class HistoryRaceScenarioTest(unittest.TestCase):
         tools = [{'type': 'function', 'function': {'name': 'attempt_completion'}}]
         results = {}
 
-        def call(tag, text):
+        def call(tag, text, extra=()):
+            extra = list(extra)
             connection = http.client.HTTPConnection('127.0.0.1', server.server_port, timeout=10)
-            body = {'stream': True, 'tools': tools, 'messages': [self.user(text)]}
+            body = {'stream': True, 'tools': tools, 'messages': [self.user(text)] + extra}
             connection.request('POST', '/v1/chat/completions', json.dumps(body),
                                {'Authorization': 'Bearer focus-fixture-local-only'})
             data = connection.getresponse().read().decode()
@@ -154,9 +155,14 @@ class HistoryRaceScenarioTest(unittest.TestCase):
         call('A', 'HISTORY_RACE_CHILD A go')
         done = results['A'][-2]['choices'][0]['delta']['tool_calls'][0]['function']['name']
         self.assertEqual('attempt_completion', done)
+        called = {'role': 'assistant', 'tool_calls': [{'function': {'name': 'new_task'}}]}
+        call('A', 'HISTORY_RACE_PARENT A go', [called])
         events = [json.loads(line)['event'] for line in log.read_text().splitlines()]
         self.assertEqual(2, events.count('barrier-released'))
         self.assertNotIn('barrier-timeout', events)
+        counts = [json.loads(line)['chunks'] for line in log.read_text().splitlines()
+                  if json.loads(line)['event'] == 'completed']
+        self.assertEqual([2, 3, 3, 3], sorted(counts))
 
     def test_lone_parent_times_out_instead_of_passing(self):
         directory = tempfile.TemporaryDirectory()

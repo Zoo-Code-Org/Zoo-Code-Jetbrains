@@ -214,6 +214,9 @@ class StoreAndLogTest(unittest.TestCase):
                           provider_failures(['barrier-released'] + ['completed'] * 6))
             self.assertIn('5 completed streams, expected 6',
                           provider_failures(['barrier-released'] * 2 + ['completed'] * 5))
+            self.assertIn('7 completed streams, expected 6', provider_failures(good + ['completed']))
+            self.assertIn('barrier released 3 times, expected 2', provider_failures(good + ['barrier-released']))
+            self.assertEqual(['provider logged barrier-timeout'], provider_failures(good + ['barrier-timeout']))
             provider.write_text('{"event": "completed"}\n{broken')
             self.assertTrue(any('not valid JSON' in f for f in check_provider(provider, 2)))
             provider.write_text('[1]\n' + '\n'.join(json.dumps({'event': e}) for e in good))
@@ -223,6 +226,9 @@ class StoreAndLogTest(unittest.TestCase):
             log = Path(directory) / 'idea.log'
             log.write_text('ok\nInvalid status transition interrupted -> delegated\n')
             self.assertEqual(1, len(check_logs([log])))
+            for phrase in ('invalid status transition', 'DeltaRejectedError', 'failed to persist', 'Cannot re-delegate'):
+                log.write_text(f'ok\n{phrase}\n')
+                self.assertEqual([f'idea.log:2: {phrase}'], check_logs([log]), phrase)
 
 
 if __name__ == '__main__':
