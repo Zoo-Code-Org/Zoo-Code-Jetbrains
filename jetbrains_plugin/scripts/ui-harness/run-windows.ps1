@@ -25,6 +25,10 @@ $ideProcess = $null
 $instances = @{}
 $fixtureProcess = $null
 $live = $Provider -eq 'solheim'
+if ($HistoryRace -and $env:GITHUB_ACTIONS -ne 'true') {
+    # This mode shares the real user profile store. Copies of its tasks go to the evidence.
+    throw 'The history race test uses the real user profile. Run it only on a disposable CI runner.'
+}
 if ($HistoryRace -and $live) { throw 'The history race test uses only the local fixture provider.' }
 $originalRelayToken = $env:SOLHEIM_RELAY_TOKEN
 $originalKeyFile = $env:SOLHEIM_KEY_FILE

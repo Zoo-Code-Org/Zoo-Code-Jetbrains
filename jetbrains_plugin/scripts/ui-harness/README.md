@@ -47,9 +47,9 @@ Record the exact ZIP, IDE version, and evidence directory when comparing builds.
 `run-windows.ps1 -HistoryRace` starts two IDEs with separate profiles and the same
 home directory, so both use one `~/.zoo-code/globalStorage`. Both IDEs start together.
 Each IDE starts a parent task with a webview `newTask` message. The test uses no keyboard,
-because a background IDE window gets no native focus on Windows. The fixture makes the parent call `new_task`, holds both parents at a
-barrier so the delegations overlap, streams both child tasks, and lets each parent
-resume and finish. `check_history_store.py` then checks the store:
+because a background IDE window gets no native focus on Windows. The fixture makes the
+parent call `new_task`. It holds both parents at a barrier so the delegations overlap.
+It then streams both child tasks and lets each parent resume and finish. `check_history_store.py` then checks the store:
 
 1. No `_index.json` was written.
 2. Every `history_item.json` is valid, has a real title, and has `size` above zero.
@@ -59,7 +59,21 @@ resume and finish. `check_history_store.py` then checks the store:
 6. The IDE logs hold no invalid status transition or failed persist message.
 
 The driver also fails if the webview changes task more than three times. The expected
-order is parent, child, parent. The unit tests run without an IDE:
+order is parent, child, parent. The test counts task switches only. It does not detect a
+view that changes to the parent during the subtask and stays there until the parent resumes.
+
+The run uses the real user profile store, so the script refuses to start unless
+`GITHUB_ACTIONS` is `true`. The Windows CI step has a 60 minute job timeout and uploads
+the evidence as `windows-history-race-<ide>-<sha>`.
+
+`-ExpectExtensionVersion` (Windows) and `EXPECT_EXTENSION_VERSION` (`run-solheim.sh`) make a run
+fail when the Zoo Code extension in the plugin ZIP has another version. CI passes it to
+the chat focus, shared history, and live Solheim steps.
+
+`streaming_fixture.py` flags: `--port`, `--log` (required), `--scenario history-race`,
+`--chunks`, `--interval` (seconds between chunks), `--barrier` (parents to hold).
+
+The unit tests run without an IDE. Run them from this directory:
 `python3 -m unittest test_streaming_fixture test_check_history_store`.
 
 ## Linux live setup

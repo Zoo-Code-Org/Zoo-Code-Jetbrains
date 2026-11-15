@@ -84,9 +84,18 @@ def check_items(items, instances):
 
 
 def check_provider(path, instances):
-    events = [json.loads(line) for line in path.read_text(encoding='utf-8').splitlines() if line.strip()]
-    names = [e['event'] for e in events]
-    failures = []
+    events, failures = [], []
+    for number, line in enumerate(path.read_text(encoding='utf-8').splitlines(), 1):
+        if not line.strip():
+            continue
+        try:
+            events.append(json.loads(line))
+        except ValueError as error:
+            failures.append(f'{path.name}:{number}: provider log line is not valid JSON ({error})')
+    for event in events:
+        if not isinstance(event, dict):
+            failures.append(f'{path.name}: provider log line is not an object: {event!r}')
+    names = [e.get('event') for e in events if isinstance(e, dict)]
     if names.count('barrier-released') != instances:
         failures.append(f'barrier released {names.count("barrier-released")} times, expected {instances}')
     for bad in ('barrier-timeout', 'disconnected'):
@@ -100,6 +109,9 @@ def check_provider(path, instances):
 def check_logs(paths):
     failures = []
     for path in paths:
+        if not path.exists():
+            failures.append(f'IDE log does not exist: {path}')
+            continue
         for number, line in enumerate(path.read_text(encoding='utf-8', errors='replace').splitlines(), 1):
             if BAD_LOG.search(line):
                 failures.append(f'{path.name}:{number}: {line.strip()[:200]}')
@@ -111,14 +123,14 @@ def main():
     parser.add_argument('--storage', type=Path, required=True)
     parser.add_argument('--since', type=float, required=True, help='epoch seconds when the run started')
     parser.add_argument('--provider-log', type=Path, required=True)
-    parser.add_argument('--ide-log', type=Path, action='append', default=[])
+    parser.add_argument('--ide-log', type=Path, action='append', required=True)
     parser.add_argument('--instances', type=int, default=2)
     parser.add_argument('--report', type=Path)
     args = parser.parse_args()
     items, failures = load_items(args.storage, args.since)
     failures += check_items(items, args.instances)
     failures += check_provider(args.provider_log, args.instances)
-    failures += check_logs([p for p in args.ide_log if p.exists()])
+    failures += check_logs(args.ide_log)
     report = {'tasks': len(items), 'failures': failures}
     text = json.dumps(report, indent=2)
     if args.report:

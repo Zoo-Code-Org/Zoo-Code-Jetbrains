@@ -526,7 +526,8 @@ public final class HarnessDriver implements AppLifecycleListener {
     /**
      * Waits until the parent task resumes and completes after its subtask. The webview shows
      * one task at a time. The expected task order is parent, child, parent. A fourth change
-     * of task means the view flipped back during the subtask.
+     * of task fails the test. The test counts task switches only. It cannot see a view
+     * that changes to the parent during the subtask and stays there until the parent resumes.
      */
     private void waitForHistoryRace(Object webview, AtomicReference<String> title) throws Exception {
         long deadline = System.currentTimeMillis() + 420_000;

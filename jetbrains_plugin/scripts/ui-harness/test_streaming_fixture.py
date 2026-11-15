@@ -131,11 +131,20 @@ class HistoryRaceScenarioTest(unittest.TestCase):
             results[tag] = [json.loads(line[6:]) for line in data.splitlines() if line.startswith('data: {')]
             connection.close()
 
-        parents = [threading.Thread(target=call, args=(tag, f'HISTORY_RACE_PARENT {tag}')) for tag in 'AB']
-        for parent in parents:
-            parent.start()
-        for parent in parents:
+        def events():
+            return [json.loads(line)['event'] for line in log.read_text().splitlines()] if log.exists() else []
+
+        parents = {tag: threading.Thread(target=call, args=(tag, f'HISTORY_RACE_PARENT {tag}')) for tag in 'AB'}
+        # Parent A alone must stay blocked: no new_task and no barrier-released.
+        parents['A'].start()
+        parents['A'].join(0.5)
+        self.assertTrue(parents['A'].is_alive())
+        self.assertNotIn('A', results)
+        self.assertNotIn('barrier-released', events())
+        parents['B'].start()
+        for parent in parents.values():
             parent.join(15)
+            self.assertFalse(parent.is_alive())
         for tag in 'AB':
             call_delta = results[tag][-2]['choices'][0]['delta']['tool_calls'][0]['function']
             self.assertEqual('new_task', call_delta['name'])
@@ -169,6 +178,7 @@ class HistoryRaceScenarioTest(unittest.TestCase):
         connection.close()
         events = [json.loads(line)['event'] for line in log.read_text().splitlines()]
         self.assertIn('barrier-timeout', events)
+        self.assertNotIn('barrier-released', events)
 
 
 if __name__ == '__main__':

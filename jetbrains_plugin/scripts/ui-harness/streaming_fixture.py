@@ -124,7 +124,7 @@ class Fixture(http.server.BaseHTTPRequestHandler):
             emit({}, 'tool_calls')
             self.wfile.write(b'data: [DONE]\n\n')
             self.wfile.flush()
-            self.server.record(event='completed', turn=turn, chunks=self.server.chunks)
+            self.server.record(event='completed', turn=turn, chunks=chunks)
         except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
             self.server.record(event='disconnected', turn=turn)
 

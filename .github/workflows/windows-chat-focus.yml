@@ -69,7 +69,7 @@ jobs:
           sudo apt-get install --no-install-recommends build-essential libx11-dev libxkbfile-dev pkg-config
       - name: Validate the local streaming fixture and authenticated relay
         working-directory: jetbrains_plugin/scripts/ui-harness
-        run: python3 -m unittest -v test_streaming_fixture.py test_solheim_proxy.py
+        run: python3 -m unittest -v test_streaming_fixture.py test_solheim_proxy.py test_check_history_store.py
       - name: Prepare extension host source
         run: ./scripts/setup.sh --skip-deps --verbose
       - name: Cache the cross-platform VS Code runtime
@@ -148,8 +148,9 @@ jobs:
             -EvidenceDir "$env:GITHUB_WORKSPACE/focus-evidence"
       # Issue #6. Two IDEs share ~/.zoo-code. Each one runs a parent task that
       # delegates to a subtask. The step fails if the shared history store has a
-      # shared index file, invalid items, wrong parent/child links, a subtask view
-      # that flips back, or an invalid status transition in the IDE logs.
+      # shared index file, invalid items, wrong parent/child links, more than three
+      # task switches in the webview, or an invalid status transition in the IDE logs.
+      # It does not detect a view that changes to the parent during the subtask and stays there.
       - name: Run two IDEs with parent tasks and subtasks against one history store
         if: ${{ !cancelled() }}
         run: |
