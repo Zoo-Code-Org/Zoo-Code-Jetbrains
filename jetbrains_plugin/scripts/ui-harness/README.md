@@ -56,7 +56,7 @@ It then streams both child tasks and lets each parent resume and finish. `check_
 3. Each parent lists only its own child, and each child names only its own parent.
 4. Each child is `completed` and no parent still waits on a child.
 5. The provider log shows both barriers released, no disconnect, and six completed streams.
-6. The IDE logs hold no invalid status transition or failed persist message.
+6. The IDE logs hold no invalid status transition, rejected delta, failed persist, or re-delegate error message.
 
 The driver also fails if the webview changes task more than three times. The expected
 order is parent, child, parent. The test counts task switches only. It does not detect a

@@ -124,6 +124,12 @@ class CheckItemsTest(unittest.TestCase):
         self.assertTrue(any('childIds' in f for f in failures))
         self.assertTrue(any('parentTaskId' in f for f in failures))
 
+    def test_foreign_or_missing_child_ids_fail(self):
+        for child_ids in (['cA', 'cB'], []):
+            items = self.two()
+            items['pA']['childIds'] = child_ids
+            self.assertTrue(any('childIds' in f for f in check_items(items, 2)), child_ids)
+
     def test_stuck_delegation_and_open_child_fail(self):
         items = self.two()
         items['pA'].update(status='delegated', awaitingChildId='cA')
@@ -229,6 +235,9 @@ class StoreAndLogTest(unittest.TestCase):
             for phrase in ('invalid status transition', 'DeltaRejectedError', 'failed to persist', 'Cannot re-delegate'):
                 log.write_text(f'ok\n{phrase}\n')
                 self.assertEqual([f'idea.log:2: {phrase}'], check_logs([log]), phrase)
+            stamped = '2026-01-01 12:00:00,000 [  1] WARN - Invalid status transition x'
+            log.write_text(f'ok\n{stamped}\n')
+            self.assertEqual([f'idea.log:2: {stamped}'], check_logs([log]))
 
 
 if __name__ == '__main__':
