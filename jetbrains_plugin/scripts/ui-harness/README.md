@@ -42,6 +42,40 @@ it has no input for an existing release ZIP. Its IDEA matrix is 2026.1.5.1 and
 2026.2.1, so those jobs do not establish compatibility with IDEA 2023.3.8.
 Record the exact ZIP, IDE version, and evidence directory when comparing builds.
 
+## Shared history race test (issue #6)
+
+`run-windows.ps1 -HistoryRace` starts two IDEs with separate profiles and the same
+home directory, so both use one `~/.zoo-code/globalStorage`. Both IDEs start together.
+Each IDE starts a parent task with a webview `newTask` message. The test uses no keyboard,
+because a background IDE window gets no native focus on Windows. The fixture makes the
+parent call `new_task`. It holds both parents at a barrier so the delegations overlap.
+It then streams both child tasks and lets each parent resume and finish. `check_history_store.py` then checks the store:
+
+1. No `_index.json` was written.
+2. Every `history_item.json` is valid, has a real title, and has `size` above zero.
+3. Each parent lists only its own child, and each child names only its own parent.
+4. Each child is `completed` and no parent still waits on a child.
+5. The provider log shows both barriers released, no disconnect, and six completed streams.
+6. The IDE logs hold no invalid status transition, rejected delta, failed persist, or re-delegate error message.
+
+The driver also fails if the webview changes task more than three times. The expected
+order is parent, child, parent. The test counts task switches only. It does not detect a
+view that changes to the parent during the subtask and stays there until the parent resumes.
+
+The run uses the real user profile store, so the script refuses to start unless
+`GITHUB_ACTIONS` is `true`. The Windows CI job has a 60 minute timeout and uploads
+the evidence as `windows-history-race-<ide>-<sha>`.
+
+`-ExpectExtensionVersion` (`run-windows.ps1`) makes a run fail when the Zoo Code extension
+in the plugin ZIP has another version. CI passes it to the chat focus, shared history,
+and live Solheim steps.
+
+`streaming_fixture.py` flags: `--port`, `--log` (required), `--scenario history-race`,
+`--chunks`, `--interval` (seconds between chunks), `--barrier` (parents to hold).
+
+The unit tests run without an IDE. Run them from this directory:
+`python3 -m unittest test_streaming_fixture test_check_history_store`.
+
 ## Linux live setup
 
 Store the Solheim key in a private file outside the repository (mode 0600).
